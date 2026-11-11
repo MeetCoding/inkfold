@@ -593,39 +593,25 @@ async function addNote(after = currentIndex(), given = null) {
     { action: { label: 'Undo', fn: undo } });
 }
 
-// Where the note comes from: typed here, or the clipboard (offered only when it holds text).
+// Type a note. (Markdown you've copied goes in with Magic paste, Ctrl+V.)
 async function noteSource(after) {
-  let clip = '', blocked = false;
-  try { clip = (IN_PAGE ? await chrome.runtime.sendMessage({ type: 'readClipboard' }) : await navigator.clipboard.readText()) ?? ''; }
-  catch { blocked = true; }
-  const has = !!clip.trim();
-  const rClip = el2('input', { type: 'radio', name: 'noteSrc', value: 'clip' });
-  const rType = el2('input', { type: 'radio', name: 'noteSrc', value: 'type' });
   const ta = el2('textarea', {
-    class: 'notetext', rows: '8', spellcheck: 'true', 'aria-label': 'Your note',
+    class: 'notetext', rows: '9', spellcheck: 'true', 'aria-label': 'Your note',
     placeholder: '# A heading\n\nSome **bold** text, a list:\n- one\n- two\n\nand math, like $E = mc^2$.',
   });
-  rClip.disabled = !has;
-  rClip.checked = has;
-  rType.checked = !has;
-  const update = () => { $('dlgOk').disabled = rType.checked ? !ta.value.trim() : !has; };
-  for (const r of [rClip, rType]) r.onchange = () => { update(); if (rType.checked) ta.focus(); };
-  ta.addEventListener('focus', () => { rType.checked = true; update(); });
+  const update = () => { $('dlgOk').disabled = !ta.value.trim(); };
   ta.addEventListener('input', update);
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !$('dlgOk').disabled) { e.preventDefault(); $('dlgOk').click(); } });
-  const clipNote = blocked ? 'Chrome didn’t let Inkfold read the clipboard.' : has ? '' : 'Your clipboard has no text.';
   const body = [
-    el2('label', { class: 'opt' + (has ? '' : ' off') }, rClip, el2('span', {}, el2('strong', {}, 'Use the clipboard'), el2('small', {}, clipNote || 'The Markdown you copied, as it is.'))),
-    ...(has ? [el2('div', { class: 'preview' }, clip.length > 400 ? clip.slice(0, 400) + '…' : clip)] : []),
-    el2('label', { class: 'opt' }, rType, el2('span', {}, el2('strong', {}, 'Type a note'), el2('small', {}, 'Markdown and LaTeX ($…$) work here too. Ctrl+Enter adds it.'))),
+    el2('p', {}, 'Markdown and LaTeX math ($…$) work here. Ctrl+Enter adds it. To use something you copied, press Ctrl+V for Magic paste instead.'),
     ta,
   ];
   const answer = ask({ title: `Add a note after page ${after + 1}`, body, ok: 'Add note', wide: true });
   update();
-  if (!has) ta.focus();
+  ta.focus();
   const ok = await answer;
   $('dlgOk').disabled = false;
-  return ok ? (rType.checked ? ta.value : clip) : null;
+  return ok ? ta.value : null;
 }
 
 // "2-4, 7, 10-end" -> [{ label: '2-4', idx: [1, 2, 3] }, { label: '7', idx: [6] }, …]
@@ -781,50 +767,20 @@ async function prepImage(src) {
   return { src: out, w, h, mime: mime === 'image/jpeg' ? 'image/jpeg' : 'image/png' };
 }
 
-// Add an image: from the clipboard (offered only when it holds one), or a file from the computer.
-async function addImage(at = targetIndex()) {
+// Add an image from the computer. (A copied picture goes in with Magic paste, Ctrl+V.)
+function addImage(at = targetIndex()) {
   if (!pages.length) return;
-  const p = pages[at];
-  let clip = null, file = null;
-  try { clip = await chrome.runtime.sendMessage({ type: 'readClipboardImage' }); } catch {}
-  const rClip = el2('input', { type: 'radio', name: 'imgSrc', value: 'clip' });
-  const rFile = el2('input', { type: 'radio', name: 'imgSrc', value: 'file' });
-  const pick = el2('input', { type: 'file', accept: 'image/*', hidden: '' });
-  const choose = el2('button', { type: 'button' }, 'Choose image…');
-  const fileName = el2('small', {}, 'PNG, JPEG, GIF, WebP and other pictures.');
-  const filePrev = el2('img', { class: 'imgprev', alt: '', hidden: '' });
-  rClip.disabled = !clip;
-  rClip.checked = !!clip;
-  rFile.checked = !clip;
-  const update = () => { $('dlgOk').disabled = rClip.checked ? !clip : !file; };
-  for (const r of [rClip, rFile]) r.onchange = update;
-  choose.onclick = () => pick.click();
+  const pick = $('imgFile');
+  pick.value = '';
   pick.onchange = () => {
     const f = pick.files[0];
     if (!f) return;
     const rd = new FileReader();
-    rd.onload = () => {
-      file = rd.result;
-      filePrev.src = file;
-      filePrev.hidden = false;
-      fileName.textContent = f.name;
-      rFile.checked = true;
-      update();
-    };
+    rd.onload = () => placeImage(pages[Math.min(at, pages.length - 1)], rd.result);
+    rd.onerror = () => say('That file couldn’t be read.');
     rd.readAsDataURL(f);
   };
-  const body = [
-    el2('label', { class: 'opt' + (clip ? '' : ' off') }, rClip, el2('span', {}, el2('strong', {}, 'Paste from the clipboard'),
-      el2('small', {}, clip ? 'The picture you copied:' : 'Your clipboard has no picture. Copy one, or take a screenshot, first.'))),
-    ...(clip ? [Object.assign(el2('img', { class: 'imgprev', alt: 'The picture on your clipboard' }), { src: clip })] : []),
-    el2('label', { class: 'opt' }, rFile, el2('span', {}, el2('strong', {}, 'Upload from your computer'), fileName)),
-    el2('div', { class: 'imgpick' }, choose, pick, filePrev),
-  ];
-  const answer = ask({ title: `Add an image to page ${at + 1}`, body, ok: 'Add image', wide: true });
-  update();
-  const ok = await answer;
-  $('dlgOk').disabled = false;
-  if (ok) await placeImage(p, rClip.checked ? clip : file);
+  pick.click();
 }
 
 // Put it in the middle of the part of the page in view, scaled down to fit the page if it's big.

@@ -27,7 +27,10 @@
     <button data-tool="text" title="Text box (T): click to type; $x^2$ for math" aria-label="Text box (T)">
       <svg viewBox="0 0 16 16"><path d="M3 3.5h10M8 3.5v9.5M6 13h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     </button>
-    <button id="addImage" title="Add an image (I): paste one or upload a file" aria-label="Add an image (I)">
+    <button id="note" title="Add a note page after the current one (N)" aria-label="Add a note (N)">
+      <svg viewBox="0 0 16 16"><path d="M9.5 1.8H4.2a1.2 1.2 0 0 0-1.2 1.2v10a1.2 1.2 0 0 0 1.2 1.2h7.6a1.2 1.2 0 0 0 1.2-1.2V5.3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.5 1.8v3.5H13M5.5 8.2h5M5.5 10.7h3.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button id="addImage" title="Add an image from your computer (I)" aria-label="Add an image (I)">
       <svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="5.8" cy="6.4" r="1.2" fill="currentColor"/><path d="M2.6 11.8l3.6-3.4 2.5 2.3 1.9-1.7 2.9 2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
     </button>
   </div>
@@ -88,7 +91,6 @@
     <button id="magicBtn" title="Magic paste (Ctrl+V): adds what's on your clipboard as a picture, a note or a text box" aria-label="Magic paste (Ctrl+V)" aria-haspopup="dialog">
       <svg viewBox="0 0 16 16"><path d="M5.5 2.5h-1A1.5 1.5 0 0 0 3 4v8.5A1.5 1.5 0 0 0 4.5 14h5M10.5 2.5h1A1.5 1.5 0 0 1 13 4v3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="5.5" y="1.5" width="5" height="2.4" rx=".8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M12.5 9.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="currentColor"/></svg>
     </button>
-    <button id="note" title="Add a note page after the current one: type it, or use the Markdown on your clipboard (N)">+ Note <span class="key">(N)</span></button>
     <button id="pagesBtn" title="Rotate, delete or split pages (P)">Pages <span class="key">(P)</span></button>
   </div>
   <span class="sep"></span>
@@ -125,6 +127,8 @@
   <div class="sk"></div>
   <div class="sk"></div>
 </div>
+
+<input type="file" id="imgFile" accept="image/*" hidden>
 
 <div id="magic" popover role="dialog" aria-labelledby="magicTitle"></div>
 

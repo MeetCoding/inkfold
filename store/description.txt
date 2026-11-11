@@ -9,7 +9,7 @@ HIGHLIGHT, DRAW AND WRITE
 • Move, resize or recolour anything you've added, wipe it away with the eraser, and undo or redo every step
 
 TURN MARKDOWN INTO NOTE PAGES
-Press N and type a note, or use Markdown you copied from your notes app, an AI chat or anywhere else. Inkfold adds a cleanly typeset note page right after the page you're reading, as wide as that page and exactly as tall as your note. Headings, lists, checklists, tables, code, quotes and links are all supported, and so is LaTeX math ($inline$, $$display$$ and align-style environments), drawn as sharp vector graphics.
+Press N and type a note, or copy Markdown from your notes app, an AI chat or anywhere else and press Ctrl+V. Inkfold adds a cleanly typeset note page right after the page you're reading, as wide as that page and exactly as tall as your note. Headings, lists, checklists, tables, code, quotes and links are all supported, and so is LaTeX math ($inline$, $$display$$ and align-style environments), drawn as sharp vector graphics.
 
 ORGANISE PAGES
 • Right-click any page to rotate or delete it, or work on ranges like 2-4, 7, 10-end

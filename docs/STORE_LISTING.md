@@ -45,7 +45,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 | Permission | Justification |
 |---|---|
 | `activeTab` | When the user clicks the toolbar icon on a tab showing a PDF, the viewer opens that PDF. |
-| `clipboardRead` | Reads the clipboard only when the user explicitly opens "Add a note" (text), "Add an image" (a picture) or "Magic paste" (either), with a button or the N / I / Ctrl+V key. The dialog shows what was copied and lets the user choose it, or type a note / upload a file instead; nothing is used unless they confirm. |
+| `clipboardRead` | Reads the clipboard only when the user explicitly uses "Magic paste" (the toolbar button or Ctrl+V). A small card shows what was copied (a picture, Markdown or text) and offers to add it; nothing is used unless the user picks an option. |
 | `offscreen` | One offscreen document (reasons `CLIPBOARD`, `BLOBS` and `WORKERS`) does three things a PDF tab can't do itself: reads the clipboard when the user opens "Add a note" (reading it from a web PDF's tab would prompt on behalf of that website); reads the bytes of a local `file://` PDF the user opened (a file:// page can't read its own file); and runs the bundled Tesseract OCR engine in a worker, to recognise text on scanned pages of the PDF the user opened. Nothing is sent anywhere. |
 | `contextMenus` | A checkbox on the toolbar icon's right-click menu to turn automatic PDF opening on or off. |
 | `storage` | Remembers the automatic-opening setting. |
@@ -65,7 +65,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 ```
 To test: open any PDF link on the web (for example the PDF of any arXiv paper). It opens in Inkfold.
 • Press H and drag across text to highlight it; R or O and drag to draw a shape; T and click to type a text box (LaTeX between $ signs works).
-• Press N to add a note page: type Markdown, or use what's on the clipboard.
+• Press N to type a note page, or copy some Markdown and press Ctrl+V (Magic paste).
 • Open a scanned PDF (no text layer): text is recognised in the background, with a small progress bar, and becomes selectable. Saved copies contain it as invisible text.
 • Open a PDF with large images (several MB): a card offers to compress it.
 • Right-click a page to rotate or delete it; press P to work on ranges or split. Ctrl+S saves a new copy.

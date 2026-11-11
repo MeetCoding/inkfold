@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.6.0: simpler note and image buttons
+
+- **Add a note** is now an icon on the left of the toolbar, next to **Add an image**. Its dialog is just a box to type in; copied Markdown goes in with Magic paste (<kbd>Ctrl</kbd>+<kbd>V</kbd>).
+- **Add an image** opens the file picker straight away. Copied pictures go in with Magic paste.
+- The clipboard is now read only by Magic paste.
+- Fixed: the very first Magic paste after starting Chrome could say the clipboard was empty (two reads raced to start Inkfold's helper page).
+
 ## 2.5.0: magic paste
 
 - **Magic paste** (<kbd>Ctrl</kbd>+<kbd>V</kbd>, or the clipboard button in the toolbar) looks at what you copied and offers the right action in a small card with a preview: a **picture** is pasted onto the current page; **Markdown** (headings, lists, tables, code, links, math…) becomes a note page after it; **plain text** becomes a text box on it, wrapped to a comfortable width. For text, the other option is offered too. <kbd>Ctrl</kbd>+<kbd>V</kbd> inside text boxes and fields pastes as usual.

@@ -46,12 +46,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 // • read the clipboard (from a web page, Chrome would ask on behalf of that website), only when the user opens "Add a note";
 // • read a local PDF's bytes (a file:// page can't read its own file), only for the PDF open in that tab;
 // • recognise text (OCR) in pages that have none, with the bundled Tesseract engine, in a worker of its own.
+let creating = null;   // requests arriving together share one creation
 async function offscreen(msg) {
   if (!(await chrome.offscreen.hasDocument?.())) {
-    await chrome.offscreen.createDocument({
+    await (creating ??= chrome.offscreen.createDocument({
       url: 'offscreen.html', reasons: ['CLIPBOARD', 'BLOBS', 'WORKERS'],
-      justification: 'Read Markdown the user copied when they add a note, read a local PDF the user opened, and recognise text in scanned pages on the device',
-    });
+      justification: 'Read what the user copied when they use Magic paste, read a local PDF the user opened, and recognise text in scanned pages on the device',
+    }).catch(() => {}).finally(() => { creating = null; }));
   }
   return chrome.runtime.sendMessage(msg);
 }
