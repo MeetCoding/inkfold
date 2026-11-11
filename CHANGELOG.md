@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.9.0: find by page, a gear for pages and file, centred toolbar
+
+- **Find** (Ctrl+F, or the new magnifier button): type a word or phrase and get a list of the pages that mention it, each page once, with how many times and a snippet of the first match. Tab (or ↓) moves to the next page in the list and scrolls the PDF there; Shift+Tab (or ↑) goes back; Enter goes there and closes the list. Matches are lit up on the pages, brighter on the page in focus. Match case and Whole word options. Scanned pages are searched once their text is recognised, and your own text boxes are searched too.
+- The **Pages** button is now a **gear** ("Pages and file", P). Its panel shows text recognition progress (with Stop) and how much smaller the file could be (with a Compress button), as well as the rotate, delete and split tools. While text is being recognised, a progress ring circles the gear; the floating progress card is gone.
+- The page number and zoom now sit in the **middle of the toolbar**.
+- The Save button no longer shows "(Ctrl+S)"; the shortcut is in its tooltip.
+- Fixed: Save opened the folder above the original file's folder for PDFs picked with Open. It now opens the folder you picked the file from.
+
 ## 2.8.0: smarter undo and a new zoom control
 
 - **Undo** and **Redo** are greyed out when there's nothing to undo or redo.

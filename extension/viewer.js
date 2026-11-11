@@ -113,7 +113,8 @@ async function openPdf(buf, fileName) {
   syncUndo();
   ocrText.clear();
   ocrBusy.clear();
-  showOcr(null);
+  showOcr({ phase: 'checking' });
+  showZip({ phase: 'checking' });
   $('notice').hidden = true;
   document.body.classList.add('loaded');
 
@@ -263,6 +264,7 @@ function layoutPages() {   // match the DOM to `entries`
   });
   $('count').textContent = `${pages.length} page${pages.length === 1 ? '' : 's'}`;
   showPage();
+  findStale();
 }
 
 function size(p) {
@@ -321,6 +323,7 @@ function textLayer(p) {   // invisible, selectable text laid over the canvas
     const end = document.createElement('div');   // lets a drag that starts in the margin still select text
     end.className = 'endOfContent';
     div.append(end);
+    markPage(p);
   })();
 }
 
@@ -332,14 +335,30 @@ function textLayer(p) {   // invisible, selectable text laid over the canvas
 const OCR_STYLES = { ocr: { fontFamily: 'sans-serif', ascent: 0.8, descent: -0.2, vertical: false } };
 let ocrStop = false;
 
-function showOcr(state) {   // null hides it; otherwise { done, total }
-  const box = $('ocr');
-  box.hidden = !state;
-  if (!state) return;
-  const pct = Math.round(100 * state.done / state.total);
-  $('ocrLabel').textContent = `Recognising text · page ${Math.min(state.done + 1, state.total)} of ${state.total}`;
+// Text recognition's state, shown in the Pages and file panel (and as a ring around its gear button while it runs).
+// phase: 'checking' | 'none' (the PDF has its text) | 'running' | 'done' | 'stopped' | 'failed'
+let ocrState = { phase: 'checking' };
+function showOcr(state) {
+  ocrState = state;
+  const { phase, done = 0, total = 0, found = 0 } = state, running = phase === 'running';
+  const pct = total ? Math.round(100 * done / total) : 0;
+  const pl = n => `${n} scanned page${n === 1 ? '' : 's'}`;
+  $('ocrLabel').textContent = {
+    checking: 'Checking the pages…',
+    none: 'Not needed: this PDF already has its text.',
+    running: `Reading page ${Math.min(done + 1, total)} of ${total} · ${pct}%`,
+    done: found ? `Done: text found on ${pl(found)}. You can select, find and highlight it.` : `Done: no text found on the ${pl(total)}.`,
+    stopped: `Stopped after ${done} of ${total} pages${found ? `; ${found} kept their text` : ''}.`,
+    failed: 'Couldn’t recognise the text on the scanned pages.',
+  }[phase];
+  const bar = $('ocrFact').querySelector('.bar');
+  bar.hidden = !running;
   $('ocrBar').style.width = Math.max(4, pct) + '%';
-  box.querySelector('.bar').setAttribute('aria-valuenow', pct);
+  bar.setAttribute('aria-valuenow', pct);
+  $('ocrStop').hidden = !running;
+  $('pagesBtn').classList.toggle('busy', running);
+  $('pagesBtn').querySelector('.ring').style.setProperty('--p', Math.max(4, pct));
+  $('pagesBtn').title = running ? `Pages and file (P) · recognising text, ${pct}%` : 'Pages and file (P): rotate, delete or split pages, text recognition, compression';
 }
 
 async function autoOcr(id) {
@@ -351,11 +370,12 @@ async function autoOcr(id) {
     const chars = tc ? tc.items.reduce((n, it) => n + (it.str?.replace(/\s/g, '').length ?? 0), 0) : 0;
     if (chars < 8) todo.push(i);
   }
-  if (!todo.length) return;   // the PDF already has its text
+  if (!todo.length) return showOcr({ phase: 'none' });   // the PDF already has its text
   ocrStop = false;
   todo.forEach(i => ocrBusy.add(i));
   let done = 0, found = 0;
-  showOcr({ done, total: todo.length });
+  const total = todo.length;
+  showOcr({ phase: 'running', done, total });
   for (const i of todo) {
     if (id !== loadId || ocrStop) break;
     let result, vp;
@@ -366,7 +386,7 @@ async function autoOcr(id) {
     } catch (e) { result = { error: String(e) }; }
     if (id !== loadId) return;
     if (!result || result.error) {
-      showOcr(null);
+      showOcr({ phase: 'failed' });
       ocrBusy.clear();
       return say('Inkfold couldn’t recognise the text on this PDF’s scanned pages.', { long: true });
     }
@@ -377,11 +397,11 @@ async function autoOcr(id) {
       for (const p of views.values()) if (p.e.doc === 'main' && p.e.i === i) rebuildText(p);
     }
     ocrBusy.delete(i);
-    showOcr({ done: ++done, total: todo.length });
+    if (id === loadId) showOcr({ phase: 'running', done: ++done, total });
   }
   ocrBusy.clear();
-  showOcr(null);
   if (id !== loadId) return;
+  showOcr({ phase: ocrStop ? 'stopped' : 'done', done, total, found });
   if (ocrStop) say(`Stopped recognising text. ${found ? `The ${found} page${found === 1 ? '' : 's'} already done keep their text.` : ''}`);
   else if (found) say(`Recognised the text on ${found} scanned page${found === 1 ? '' : 's'}. You can now select, search and highlight it, and copies you save keep it.`, { long: true });
 }
@@ -430,37 +450,87 @@ function rebuildText(p) {   // swap a page's text layer for a fresh one (after i
   p.text = null;
   p.textReady = null;
   textLayer(p);
+  findStale();   // its words can now be found
 }
 
 /* ---------- offering to compress ---------- */
 
 const fmtSize = n => (n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB');
 
-// Once per file (remembered by its fingerprint), check how much smaller it could be; if that's more
-// than a fifth, offer it. Compressing swaps in the smaller version for the copies you save.
+// How much smaller the file could be is worked out once per file (remembered by its fingerprint, with the
+// result) and shown in the Pages and file panel. The first time it's more than a fifth, Inkfold also offers it.
+// phase: 'checking' | 'small' | 'locked' | 'ready' (could be smaller) | 'compact' | 'working' | 'done' | 'failed'
+let zipState = { phase: 'checking' };
+function showZip(state) {
+  zipState = state;
+  const { phase, before, after } = state, pct = before ? Math.round(100 * (1 - after / before)) : 0;
+  $('zipLabel').textContent = {
+    checking: 'Checking how much smaller it could be…',
+    small: 'Not needed: the file is already small.',
+    locked: 'Not available for encrypted PDFs.',
+    ready: `Could be ${pct}% smaller (${fmtSize(before)} → ${fmtSize(after)}).`,
+    compact: pct > 0 ? `Already compact: at most ${pct}% smaller.` : 'Already compact.',
+    working: 'Compressing…',
+    done: `Compressed by ${pct}%: copies you save are about ${fmtSize(after)}.`,
+    failed: 'Couldn’t check this file.',
+  }[phase];
+  const meter = $('zipFact').querySelector('.meter');
+  meter.hidden = !['ready', 'compact', 'done'].includes(phase) || pct <= 0;
+  $('zipBar').style.width = clamp(pct, 0, 100) + '%';
+  $('zipGo').hidden = phase !== 'ready';
+  $('zipGo').classList.toggle('go', pct > 20);
+}
+
+async function smallerCopy() {
+  return (await import('./compress.js')).compressPdf(docs.get('main').bytes);
+}
+
+function applyCompression(id, smaller) {
+  const main = docs.get('main');
+  if (id !== loadId) return;
+  const before = main.bytes.length;
+  main.bytes = smaller;
+  dirty = true;
+  showZip({ phase: 'done', before, after: smaller.length });
+  say(`Compressed. Saved copies are now about ${fmtSize(smaller.length)}. Press Save to keep it.`, { action: { label: 'Save', fn: save } });
+}
+
 async function checkCompression(id, encrypted) {
   const main = docs.get('main'), fp = main.pdf.fingerprints?.[0];
-  const seen = store.get('compressChecked', []);
-  if (encrypted || !fp || seen.includes(fp) || main.bytes.length < 100_000) return;
+  if (encrypted) return showZip({ phase: 'locked' });
+  if (main.bytes.length < 100_000) return showZip({ phase: 'small' });
+  const known = store.get('compressInfo', {})[fp];
+  const show = after => showZip({ phase: 1 - after / main.bytes.length > 0.05 ? 'ready' : 'compact', before: main.bytes.length, after });
+  if (known && known[0] === main.bytes.length) return show(known[1]);
   await new Promise(r => setTimeout(r, 1500));   // let the first pages draw first
   if (id !== loadId) return;
   let smaller;
-  try { smaller = await (await import('./compress.js')).compressPdf(main.bytes); } catch { return; }
+  try { smaller = await smallerCopy(); } catch { return id === loadId && showZip({ phase: 'failed' }); }
   if (id !== loadId) return;
-  store.set('compressChecked', [...seen.slice(-299), fp]);
   const before = main.bytes.length, after = smaller.length, saved = 1 - after / before;
-  if (saved <= 0.2) return;
+  if (fp) {
+    const info = store.get('compressInfo', {});
+    delete info[fp];
+    const keep = Object.entries(info).slice(-299);
+    store.set('compressInfo', Object.fromEntries([...keep, [fp, [before, after]]]));
+  }
+  show(after);
+  const offered = store.get('compressChecked', []);
+  if (saved <= 0.2 || (fp && offered.includes(fp))) return;
+  if (fp) store.set('compressChecked', [...offered.slice(-299), fp]);
   notice({
     text: `This PDF could be ${Math.round(saved * 100)}% smaller (${fmtSize(before)} → ${fmtSize(after)}), mostly by storing its images more efficiently. Compress it?`,
     yes: 'Compress', no: 'Not now',
-    onYes: () => {
-      if (id !== loadId) return;
-      main.bytes = smaller;
-      dirty = true;
-      say(`Compressed. Copies you save are now about ${fmtSize(after)}. Your original file isn’t changed.`, { action: { label: 'Save a copy', fn: save } });
-    },
+    onYes: () => applyCompression(id, smaller),
   });
 }
+
+$('zipGo').onclick = async () => {
+  const id = loadId;
+  const was = zipState;
+  showZip({ phase: 'working' });
+  try { applyCompression(id, await smallerCopy()); } catch { if (id === loadId) showZip(was); }
+};
 
 function notice({ text, yes, no, onYes }) {
   $('noticeText').textContent = text;
@@ -470,6 +540,215 @@ function notice({ text, yes, no, onYes }) {
   $('noticeNo').onclick = () => { $('notice').hidden = true; };
   $('notice').hidden = false;
 }
+
+/* ---------- find ---------- */
+
+// Ctrl+F lists every page that mentions the text, once, with how many times and a snippet. Moving through the
+// list (Tab, ↓) scrolls to each page in turn; the matches are lit up on the pages with the CSS Highlight API,
+// so the page's own text is never touched.
+const findCache = new WeakMap();   // pdf.js page -> its text as one string
+let findRun = 0, findHits = [], findOn = -1, findTimer = 0;
+const findMarks = new Map();       // page view -> Range[] of its matches
+
+function findPattern() {
+  const q = $('findQ').value.trim();
+  if (!q) return null;
+  let src = q.split(/\s+/).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+  if ($('findWord').checked) src = `(?<![\\p{L}\\p{N}_])${src}(?![\\p{L}\\p{N}_])`;
+  try { return new RegExp(src, $('findCase').checked ? 'gu' : 'giu'); } catch { return null; }
+}
+
+const joinItems = items => items.map(it => (it.str ?? '') + (it.hasEOL ? '\n' : '')).join('');
+async function pageText(p) {
+  let t;
+  if (p.e.doc === 'main' && ocrText.has(p.e.i)) t = joinItems(ocrText.get(p.e.i));
+  else if ((t = findCache.get(p.page)) === undefined) {
+    const tc = await p.page.getTextContent().catch(() => ({ items: [] }));
+    findCache.set(p.page, t = joinItems(tc.items));
+  }
+  const boxes = shapes.filter(s => s.page === p.id && s.type === 'text').map(s => s.text);   // your own text boxes too
+  return (boxes.length ? t + '\n' + boxes.join('\n') : t).replace(/[\s­]+/g, ' ');
+}
+
+function openFind() {
+  if (!docs.has('main')) return;
+  const f = $('find');
+  if (!f.matches(':popover-open')) {
+    document.querySelectorAll('.pop:popover-open, #zoomPop:popover-open').forEach(x => x.hidePopover());
+    f.style.top = header.getBoundingClientRect().bottom + 6 + 'px';
+    clearTimeout(findFade);
+    f.showPopover();
+    $('findBtn').setAttribute('aria-pressed', 'true');
+    const picked = String(getSelection()).trim();   // selected text becomes the search
+    if (picked && picked.length < 80 && !picked.includes('\n')) $('findQ').value = picked;
+    if ($('findQ').value) runFind();
+  }
+  $('findQ').focus();
+  $('findQ').select();
+}
+
+let findFade = 0;
+function closeFind(linger = false) {   // linger: leave the matches lit for a moment, to show where they are
+  $('find').hidePopover();
+  $('findBtn').setAttribute('aria-pressed', 'false');
+  findRun++;
+  clearTimeout(findFade);
+  const clear = () => { findMarks.clear(); CSS.highlights?.delete('find'); CSS.highlights?.delete('find-on'); };
+  if (linger) findFade = setTimeout(() => { if (!$('find').matches(':popover-open')) clear(); }, 2500);
+  else clear();
+}
+
+function findStale() {   // pages or their text changed: search again, quietly
+  if (!$('find').matches(':popover-open') || !$('findQ').value.trim()) return;
+  clearTimeout(findTimer);
+  findTimer = setTimeout(() => runFind(true), 250);
+}
+
+async function runFind(keepFocus = false) {
+  const run = ++findRun, re = findPattern(), list = $('findList'), sum = $('findSum');
+  const onPage = findOn >= 0 ? findHits[findOn]?.p : null;
+  findHits = []; findOn = -1;
+  findMarks.clear();
+  list.replaceChildren();
+  $('find').querySelector('.empty')?.remove();
+  paintMarks();
+  if (!re) { sum.textContent = ''; return; }
+  let total = 0;
+  sum.textContent = 'Searching…';
+  for (const [k, p] of pages.entries()) {
+    const text = await pageText(p);
+    if (run !== findRun) return;
+    re.lastIndex = 0;
+    let n = 0, first = null, m;
+    while ((m = re.exec(text))) { if (!first) first = m; n++; if (!m[0].length) re.lastIndex++; }
+    if (n) {
+      total += n;
+      const hit = { p, k, n };
+      findHits.push(hit);
+      list.append(findRow(hit, text, first));
+      sum.innerHTML = '';
+      sum.append(...summary(total, findHits.length, k + 1 < pages.length));
+    }
+    if (k % 8 === 7) await new Promise(r => setTimeout(r));   // stay responsive on long PDFs
+  }
+  if (run !== findRun) return;
+  sum.replaceChildren(...summary(total, findHits.length, false));
+  if (!findHits.length) {
+    const scanning = ocrState.phase === 'running';
+    list.after(el2('p', { class: 'empty' }, scanning ? 'No matches yet. Inkfold is still reading the scanned pages; they’ll be searched as they’re done.' : 'No matches in this PDF.'));
+  }
+  for (const p of pages) if (p.textReady) p.textReady.then(() => markPage(p));
+  const back = onPage && findHits.findIndex(h => h.p === onPage);
+  if (keepFocus && back >= 0) setFindOn(back, false);
+}
+
+function summary(total, nPages, more) {
+  if (!total) return [document.createTextNode(more ? 'Searching…' : 'No matches')];
+  const b = s => el2('b', {}, String(s));
+  return [b(total), ` match${total === 1 ? '' : 'es'} on `, b(nPages), ` page${nPages === 1 ? '' : 's'}${more ? '…' : ''}`];
+}
+
+function findRow(hit, text, m) {
+  const a = Math.max(0, m.index - 36), z = Math.min(text.length, m.index + m[0].length + 70);
+  const snip = el2('span', { class: 'snip' },
+    (a ? '…' : '') + text.slice(a, m.index).trimStart(), el2('mark', {}, m[0]), text.slice(m.index + m[0].length, z) + (z < text.length ? '…' : ''));
+  const isNote = hit.p.e.doc !== 'main';
+  const btn = el2('button', { type: 'button', title: `Page ${hit.k + 1}: ${hit.n} match${hit.n === 1 ? '' : 'es'}` },
+    el2('span', { class: 'pg' }, el2('small', {}, isNote ? 'Note' : 'Page'), el2('span', {}, String(hit.k + 1))),
+    snip,
+    el2('span', { class: 'n', 'aria-label': `${hit.n} match${hit.n === 1 ? '' : 'es'}` }, '×' + hit.n));
+  btn.addEventListener('focus', () => setFindOn(findHits.indexOf(hit)));
+  btn.addEventListener('click', async () => { await setFindOn(findHits.indexOf(hit)); closeFind(true); });
+  return el2('li', {}, btn);
+}
+
+// Scroll to a result's page (its first match, once the page's text is there) and light its matches up brighter.
+async function setFindOn(i, scroll = true) {
+  const hit = findHits[i];
+  if (!hit) return;
+  findOn = i;
+  $('findList').querySelectorAll('button.on').forEach(b => b.classList.remove('on'));
+  const btn = $('findList').children[i]?.firstChild;
+  btn?.classList.add('on');
+  btn?.scrollIntoView({ block: 'nearest' });
+  if (!scroll) return paintMarks();
+  const p = hit.p;
+  p.div.scrollIntoView({ block: 'start' });
+  scrollBy(0, -GAP);
+  showPage(hit.k);
+  await textLayer(p);
+  if (findOn !== i) return;
+  markPage(p);
+  const r = findMarks.get(p)?.[0]?.getBoundingClientRect();
+  const top = header.getBoundingClientRect().bottom;
+  if (r && (r.bottom > innerHeight - 40 || r.top < top)) scrollBy({ top: r.top - top - innerHeight * 0.25, behavior: 'smooth' });
+}
+
+// The ranges of the matches in a page's text layer.
+function markPage(p) {
+  if (!$('find').matches(':popover-open') || !findHits.some(h => h.p === p)) {
+    if (findMarks.delete(p)) paintMarks();
+    return;
+  }
+  const re = findPattern(), layer = p.div.querySelector('.textLayer');
+  if (!re || !layer) return;
+  const nodes = [], walk = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  let str = '';
+  for (let n; (n = walk.nextNode());) {
+    if (n.nodeType === 3) { nodes.push([n, str.length]); str += n.data; }
+    else if (n.tagName === 'BR') str += '\n';   // line ends, so words on two lines don't run together
+  }
+  if (!nodes.length) return;
+  const at = off => {   // string offset -> [text node, offset in it]
+    let lo = 0, hi = nodes.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (nodes[mid][1] <= off) lo = mid; else hi = mid - 1; }
+    return [nodes[lo][0], off - nodes[lo][1]];
+  };
+  const ranges = [];
+  for (let m; (m = re.exec(str));) {
+    if (!m[0].length) { re.lastIndex++; continue; }
+    const r = new Range();
+    const [a, ao] = at(m.index), [b, bo] = at(m.index + m[0].length - 1);
+    r.setStart(a, ao);
+    r.setEnd(b, bo + 1);
+    ranges.push(r);
+  }
+  findMarks.set(p, ranges);
+  paintMarks();
+}
+
+function paintMarks() {
+  if (!CSS.highlights || typeof Highlight === 'undefined') return;
+  const on = findHits[findOn]?.p, all = [], cur = [];
+  for (const [p, rs] of findMarks) (p === on ? cur : all).push(...rs);
+  CSS.highlights.set('find', new Highlight(...all));
+  CSS.highlights.set('find-on', new Highlight(...cur));
+}
+
+$('findBtn').onclick = () => ($('find').matches(':popover-open') ? closeFind() : openFind());
+$('findClose').onclick = () => closeFind();
+$('findQ').addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(runFind, 140); });
+$('findCase').onchange = $('findWord').onchange = () => { runFind(); $('findQ').focus(); };
+$('find').addEventListener('keydown', e => {
+  const rows = [...$('findList').querySelectorAll('li > button')];
+  const i = rows.indexOf(document.activeElement), mod = e.ctrlKey || e.metaKey;
+  const go = j => { e.preventDefault(); rows[(j + rows.length) % rows.length]?.focus(); };
+  if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); e.stopPropagation(); $('findQ').focus(); $('findQ').select(); return; }
+  if (mod) return;   // Ctrl+Z, Ctrl+S… still work
+  e.stopPropagation();   // letters typed here aren't tool shortcuts
+  if (e.key === 'Escape') { e.preventDefault(); return closeFind(); }
+  if (!rows.length) return;
+  if (e.target === $('findQ')) {
+    if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'ArrowDown') return go(0);
+    if (e.key === 'Enter') { e.preventDefault(); rows[0].click(); }
+    return;
+  }
+  if (i < 0) return;
+  if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) return go(i + 1);
+  if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) return i === 0 ? (e.preventDefault(), $('findQ').focus()) : go(i - 1);
+  if (e.key === 'Home') return go(0);
+  if (e.key === 'End') return go(rows.length - 1);
+});
 
 /* ---------- zoom and layout ---------- */
 
@@ -1379,6 +1658,7 @@ function setTool(t) {
 
 // Where the open PDF came from, so Save can offer to write over it.
 let srcHandle = null;   // a file handle, when it was picked or dropped here
+let srcPicked = false;  // picked with Open (so the open picker's id remembers its folder)
 let srcUrl = null;      // its address, when it was opened straight in Chrome
 
 // Chrome remembers the last folder used with each picker id. A file opened from file:// gives no handle,
@@ -1401,7 +1681,9 @@ async function save() {
       suggestedName, id: folderId(),
       types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }],
     };
-    if (srcHandle) opts.startIn = srcHandle;   // opens in the original's own folder
+    // Chrome opens a file handle given as startIn one folder too high, so the original's folder comes from the
+    // picker id instead: a file chosen with Open shares its id, which remembers the folder it was picked in.
+    if (srcHandle) opts.id = srcPicked ? 'inkfold-open' : opts.id;
     else if (!srcUrl?.startsWith('file:')) opts.startIn = 'downloads';
     try {
       handle = await showSaveFilePicker(opts);
@@ -1646,9 +1928,10 @@ const ICONS = {
   trash: '<svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
-async function openFile(f, handle = null) {
+async function openFile(f, handle = null, picked = false) {
   if (!f) return;
   srcHandle = handle;
+  srcPicked = !!handle && !!picked;
   await openPdf(await f.arrayBuffer(), f.name);
   // Files dropped or picked here live on the extension's page, which Gemini in Chrome can't read.
   if (!IN_PAGE && docs.has('main') && firstTime('tip-gemini')) {
@@ -1731,7 +2014,7 @@ $('pageNum').onfocus = () => $('pageNum').select();
 function togglePanel(id, field) {
   const el = $(id);
   if (el.matches(':popover-open')) return el.hidePopover();
-  document.querySelectorAll(':popover-open').forEach(x => x.hidePopover());
+  document.querySelectorAll(':popover-open:not(#find)').forEach(x => x.hidePopover());
   el.style.top = header.getBoundingClientRect().bottom + 6 + 'px';
   if (id === 'panel') {   // set up before showing, so nothing changes the fields while you type
     $('panelMsg').textContent = '';
@@ -1746,7 +2029,7 @@ for (const b of document.querySelectorAll('button[data-tool]')) b.onclick = () =
 for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
 $('addImage').onclick = () => addImage();
 $('magicBtn').onclick = magicPaste;
-$('ocrStop').onclick = () => { ocrStop = true; showOcr(null); };
+$('ocrStop').onclick = () => { ocrStop = true; };
 $('tsmaller').onclick = () => setTextSize(-1);
 $('tbigger').onclick = () => setTextSize(1);
 // The size buttons don't take focus, so a text box being typed in stays open.
@@ -1792,7 +2075,7 @@ async function pickFile() {   // the File System Access picker gives a handle, s
   if (!window.showOpenFilePicker) return $('file').click();
   try {
     const [h] = await showOpenFilePicker({ id: 'inkfold-open', types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] });
-    await openFile(await h.getFile(), h);
+    await openFile(await h.getFile(), h, true);
   } catch (e) { if (e.name !== 'AbortError') $('file').click(); }
 }
 $('open').onclick = pickFile;
@@ -1902,6 +2185,7 @@ const KEYS = {
   'd': () => setSpread(!spread),
   'n': () => addNote(targetIndex() >= 0 ? targetIndex() : undefined),
   'p': () => togglePanel('panel', 'range'),
+  '/': () => openFind(),
   '?': () => togglePanel('keys'),
   '[': () => thisPage() && rotatePages(thisPage(), -90), ']': () => thisPage() && rotatePages(thisPage(), 90),
   'j': () => goPage(1), 'k': () => goPage(-1), 'g': () => { $('pageNum').focus(); $('pageNum').select(); },
@@ -1914,7 +2198,7 @@ const KEYS = {
   },
 };
 const CTRL_KEYS = {
-  's': save, 'o': () => docs.has('main') || pickFile(),   // with a PDF open, there's no opening another one here
+  's': save, 'f': () => openFind(), 'o': () => docs.has('main') || pickFile(),   // with a PDF open, there's no opening another one here
   'z': undo, 'y': redo, 'v': magicPaste,
   '=': () => step(1), '+': () => step(1), '-': () => step(-1), '0': () => setZoom(1),
 };
@@ -1961,8 +2245,8 @@ async function welcome() {
   const list = el2('ul', {},
     el2('li', {}, el2('strong', {}, 'PDFs now open here. '), 'Any PDF you open in Chrome opens in Inkfold. To use Chrome’s own viewer again, right-click the Inkfold toolbar icon and untick “Open every PDF with Inkfold”.'),
     el2('li', {}, el2('strong', {}, 'Scanned PDFs become searchable. '), 'Inkfold reads the text of pages that have none, in the background, right on your computer.'),
-    el2('li', {}, el2('strong', {}, 'Your files stay on your computer. '), 'Nothing is uploaded. Saving makes a new copy; your original PDF is never changed.'),
-    el2('li', {}, el2('strong', {}, 'Keyboard first. '), 'Every button shows its shortcut in brackets. Press ? for the full list.'),
+    el2('li', {}, el2('strong', {}, 'Your files stay on your computer. '), 'Nothing is uploaded. Save writes over your original after you confirm, or makes a new copy if you pick another name.'),
+    el2('li', {}, el2('strong', {}, 'Keyboard first. '), 'Hover over a button to see its shortcut. Press ? for the full list, and Ctrl+F to find text.'),
   );
   if (!fileAccess) {
     list.append(el2('li', {}, el2('strong', {}, 'PDFs on your computer: '), 'to open them straight from Chrome, turn on “Allow access to file URLs”. ', settingsBtn));

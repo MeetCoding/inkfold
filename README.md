@@ -22,9 +22,10 @@
 - **LaTeX math** in notes: `$inline$`, `$$display$$`, `\(…\)`, `\[…\]` and `align`-style environments, drawn as sharp vector shapes.
 - **Page tools**: right-click a page to rotate or delete it, or work on ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
 - **Fit width, fit page, two-page view and full screen**, with smooth resizing even on long documents. The toolbar shows the page you're on; type a number (or press <kbd>G</kbd>) to jump to any page.
-- **Text recognition (OCR)** for scanned PDFs: pages without text are read automatically in the background, with a small progress bar (you can stop it). The text becomes selectable, searchable and highlightable, and saved copies contain it as invisible text, so they're searchable everywhere. Runs entirely on your computer with the bundled [Tesseract](https://github.com/tesseract-ocr/tesseract) engine; English text. PDFs that already have text are left alone.
+- **Text recognition (OCR)** for scanned PDFs: pages without text are read automatically in the background. Progress shows as a ring around the gear button and in the Pages and file panel (where you can stop it). The text becomes selectable, searchable and highlightable, and saved copies contain it as invisible text, so they're searchable everywhere. Runs entirely on your computer with the bundled [Tesseract](https://github.com/tesseract-ocr/tesseract) engine; English text. PDFs that already have text are left alone.
 - **Compression**: the first time you open a PDF that could be more than 20% smaller (usually because of oversized images), a small card offers to compress it. Copies you save are then smaller; nothing else changes.
-- **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
+- **Find** (<kbd>Ctrl</kbd>+<kbd>F</kbd> or the magnifier): lists every page that mentions the text, once each, with how many times and a snippet. <kbd>Tab</kbd> moves to the next page in the list and scrolls there; matches are lit up on the page. Also searches recognised text on scans and your own text boxes.
+- **Selectable text**, readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
 - **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
 - **Magic paste** (<kbd>Ctrl</kbd>+<kbd>V</kbd>, or the clipboard button): Inkfold looks at what you copied and offers the right thing: a picture goes onto the current page, Markdown becomes a note page after it, and plain text becomes a text box on it.
 - **Images** (<kbd>I</kbd>): upload a picture from your computer (or paste a copied one with Magic paste). It's placed on the page, scaled to fit, and can be moved, resized (keeping its proportions) and deleted like any other annotation.
@@ -68,10 +69,11 @@ Coming soon.
 | Add an image | <kbd>I</kbd> (or the picture button) and pick a file from your computer. (To paste a picture you copied, use **Magic paste**.) Drag the image to move it and a corner to resize it (hold <kbd>Shift</kbd> to stretch it); <kbd>Del</kbd> or the eraser removes it. |
 | Erase | <kbd>E</kbd> for the eraser, then click a highlight, shape or text box to remove it, or drag across several at once. Whatever it would remove fades as you point at it; one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings back a whole stroke. |
 | Add a note | Press <kbd>N</kbd> (or the note button, next to the picture button) and type the note. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. (For Markdown you copied, use **Magic paste**.) |
-| Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
-| Split | In the Pages panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
+| Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> (or the gear button) for the Pages and file panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
+| Split | In the Pages and file panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
 | Zoom | − / + step through the presets. Click the percentage for a card with Fit width, Fit page, a zoom slider and preset buttons. |
-| Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> opens Chrome's save dialog with the original file's name, so confirming Chrome's "replace" prompt writes over the original. Pick another name or folder to keep the original and save a copy. For a PDF opened straight from your computer, the dialog opens in that file's folder from the second save there on (Chrome gives extensions no way to find the folder before that). |
+| File status | The gear button's panel shows text recognition progress (with Stop) and how much smaller the file could be, with a Compress button. |
+| Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> opens Chrome's save dialog with the original file's name, so confirming Chrome's "replace" prompt writes over the original. Pick another name or folder to keep the original and save a copy. For a PDF opened straight from your computer, the dialog opens in that file's folder from the second save there on; for one picked with Open, it opens in that folder straight away (Chrome gives extensions no way to find the folder before that). |
 
 ### Keyboard shortcuts
 
@@ -91,11 +93,11 @@ Coming soon.
 | <kbd>Ctrl</kbd> <kbd>Z</kbd> | Undo | <kbd>N</kbd> | Add a note |
 | <kbd>Ctrl</kbd> <kbd>Y</kbd> | Redo | <kbd>[</kbd> / <kbd>]</kbd> | Rotate page left / right |
 | <kbd>Del</kbd> | Delete annotation | <kbd>Shift</kbd> <kbd>Del</kbd> | Delete page |
-| <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages panel |
+| <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages and file panel |
 | <kbd>Ctrl</kbd> <kbd>V</kbd> | Magic paste | | |
 | <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> | Open (start page only) / save | <kbd>?</kbd> | Shortcut list |
 
-Page shortcuts act on the page under the pointer, or else the page filling the window. Inside the Pages panel's range box, <kbd>[</kbd> <kbd>]</kbd> and <kbd>Shift</kbd> <kbd>Del</kbd> act on the typed range instead.
+Page shortcuts act on the page under the pointer, or else the page filling the window. Inside the Pages and file panel's range box, <kbd>[</kbd> <kbd>]</kbd> and <kbd>Shift</kbd> <kbd>Del</kbd> act on the typed range instead.
 
 ### Opening every PDF with Inkfold
 

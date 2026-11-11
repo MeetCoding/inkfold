@@ -14,8 +14,16 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.35 syst
 
 /* ---------- toolbar ---------- */
 header {
-  position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 3px;
+  position: sticky; top: 0; z-index: 2; display: grid; align-items: center; gap: 6px 10px;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);   /* page number and zoom sit in the middle */
   min-height: 48px; padding: 7px 12px; background: var(--bar); border-bottom: 1px solid var(--line);
+}
+.bar-l, .bar-c, .bar-r { display: flex; align-items: center; gap: 3px; }
+.bar-r { justify-content: flex-end; }
+@media (max-width: 1240px) {   /* too narrow for three columns: let the toolbar wrap */
+  header { display: flex; flex-wrap: wrap; }
+  .bar-l, .bar-c, .bar-r { flex-wrap: wrap; }
+  .bar-r { margin-left: auto; }
 }
 .group { display: flex; align-items: center; gap: 2px; }
 .sep { width: 1px; height: 20px; margin: 0 6px; background: var(--line); }
@@ -131,7 +139,7 @@ body.full #full .exit { display: block; }
 }
 #pageNum:hover { border-color: var(--line); }
 #pageNum:focus { background: var(--bar); border-color: var(--accent); outline: none; }
-body:not(.loaded) #pageBox, body:not(.loaded) #pageBox + .sep, body.loaded .no-doc { display: none; }
+body:not(.loaded) .bar-c, body:not(.loaded) #findBtn, body.loaded .no-doc { display: none; }
 header [hidden] { display: none !important; }
 #palette button { width: 22px; }
 #palette .dot { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .18); transition: transform .1s; }
@@ -317,17 +325,75 @@ dialog .link:hover { background: none; }
 #magic .acts button { justify-content: center; width: 100%; height: 32px; }
 #magic .acts button:not(.primary) { background: var(--hover); }
 
-/* ---------- background work: text recognition, compression offer ---------- */
-#ocr {
-  position: fixed; left: 16px; bottom: 16px; z-index: 5; display: flex; align-items: center; gap: 10px;
-  padding: 6px 6px 6px 12px; color: var(--ink); background: var(--bar); border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: 0 4px 14px rgb(0 0 0 / .12); font-size: 12px; font-variant-numeric: tabular-nums;
+/* ---------- background work: compression offer, the gear's progress ring ---------- */
+#notice[hidden] { display: none; }
+#pagesBtn { position: relative; }
+#pagesBtn .ring {
+  --p: 0; position: absolute; inset: 1px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background: conic-gradient(var(--accent) calc(var(--p) * 1%), color-mix(in srgb, var(--accent) 16%, transparent) 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
 }
-#ocr[hidden], #notice[hidden] { display: none; }
-#ocr .bar { width: 120px; height: 4px; border-radius: 2px; background: var(--hover); overflow: hidden; }
-#ocr .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .3s; }
-#ocr button { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; color: var(--dim); }
-#ocr button svg { width: 14px; height: 14px; }
+#pagesBtn.busy .ring { opacity: 1; }
+#pagesBtn.busy svg { animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* the facts at the top of the Pages and file panel */
+#panel { width: 340px; }
+.facts { display: grid; gap: 10px; }
+.fact { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; }
+.fact .ico { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--accent); background: var(--accent-soft); }
+.fact .ico svg { width: 16px; height: 16px; }
+.fact .txt { display: grid; gap: 2px; min-width: 0; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.fact .txt b { font-size: 13px; color: var(--ink); }
+.fact .bar, .fact .meter { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--hover); overflow: hidden; }
+.fact .bar[hidden], .fact .meter[hidden] { display: none; }
+.fact .bar i, .fact .meter i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .3s; }
+.fact .meter i { background: #2e9e5b; }
+button.mini { height: 26px; padding: 0 10px; font-size: 12px; font-weight: 600; background: var(--hover); }
+button.mini.go { background: var(--ink); color: var(--bar); }
+button.mini[hidden] { display: none; }
+
+/* ---------- find ---------- */
+#find {
+  position: fixed; inset: auto 12px auto auto; margin: 0; width: 360px; max-width: calc(100vw - 24px); max-height: calc(100vh - 72px);
+  display: none; flex-direction: column; padding: 0; overflow: hidden; color: var(--ink);
+  background: var(--bar); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+#find:popover-open { display: flex; }
+#find .q { display: flex; align-items: center; gap: 8px; padding: 10px 8px 6px 14px; }
+#find .q > svg { width: 16px; height: 16px; flex: none; color: var(--dim); }
+#findQ { flex: 1; min-width: 0; height: 30px; padding: 0; font: inherit; font-size: 15px; color: inherit; background: none; border: 0; outline: none; }
+#findQ::-webkit-search-cancel-button { display: none; }
+#findClose { width: 28px; height: 28px; color: var(--dim); }
+#find .opts { display: flex; align-items: center; gap: 10px; padding: 0 14px 8px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--line); }
+#find .opts label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+#find .opts input { margin: 0; accent-color: var(--accent); }
+#findSum { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#findSum b { color: var(--ink); }
+#findList { list-style: none; margin: 0; padding: 6px; overflow-y: auto; }
+#findList:empty { display: none; }
+#findList li > button {
+  width: 100%; height: auto; display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 10px;
+  padding: 7px 8px; text-align: left; border-radius: 9px; white-space: normal;
+}
+#findList .pg { display: grid; justify-items: center; line-height: 1.1; }
+#findList .pg small { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+#findList .pg span { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#findList .snip { min-width: 0; font-size: 12px; line-height: 1.4; color: var(--dim); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+#findList .snip mark { color: var(--ink); background: color-mix(in srgb, #ffd23f 55%, transparent); border-radius: 2px; padding: 0 1px; }
+#findList .n {
+  min-width: 26px; height: 22px; padding: 0 7px; display: grid; place-items: center; border-radius: 11px;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); background: var(--hover);
+}
+#findList li > button:hover { background: var(--hover); }
+#findList li > button:focus-visible, #findList li > button.on { outline: none; background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+#findList li > button:focus-visible .n, #findList li > button.on .n { color: #fff; background: var(--accent); }
+#find .hint { margin: 0; padding: 7px 14px 9px; font-size: 11px; color: var(--dim); border-top: 1px solid var(--line); }
+#find .hint kbd { font: inherit; font-weight: 600; color: var(--ink); }
+#find .empty { padding: 18px 14px; text-align: center; color: var(--dim); font-size: 13px; }
+::highlight(find) { background-color: rgb(255 210 63 / .5); }
+::highlight(find-on) { background-color: rgb(255 140 0 / .55); }
+
 #notice {
   position: fixed; right: 16px; bottom: 16px; z-index: 5; width: min(340px, calc(100vw - 32px)); padding: 14px 14px 12px;
   color: var(--ink); background: var(--bar); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);

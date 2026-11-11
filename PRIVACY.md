@@ -1,6 +1,6 @@
 # Inkfold privacy policy
 
-_Last updated: 11 November 2026 (version 2.8.0)_
+_Last updated: 11 November 2026 (version 2.9.0)_
 
 Inkfold is a Chrome extension for annotating PDFs. It is built so that your documents stay on your computer.
 

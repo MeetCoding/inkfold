@@ -17,7 +17,7 @@ ORGANISE PAGES
 • Everything can be undone
 
 SCANNED PDFS BECOME SEARCHABLE
-Open a scanned PDF and Inkfold recognises its text in the background, with a small progress bar. The text becomes selectable and searchable, works with the highlighter, and is kept in copies you save. Recognition runs entirely on your computer (English text). PDFs that already have text are left as they are.
+Open a scanned PDF and Inkfold recognises its text in the background; progress shows in the Pages and file panel. The text becomes selectable and searchable, works with the highlighter, and is kept in copies you save. Recognition runs entirely on your computer (English text). PDFs that already have text are left as they are.
 
 SMALLER FILES
 The first time you open a PDF that could be more than 20% smaller, mostly because of oversized images, Inkfold offers to compress it. Copies you save are then that much smaller.
@@ -25,7 +25,8 @@ The first time you open a PDF that could be more than 20% smaller, mostly becaus
 READ COMFORTABLY
 • Fit width, fit page, two-page view and full screen, smooth even on long documents
 • See which page you're on, and jump to any page by number
-• Selectable, searchable text that works with Ctrl+F and screen readers
+• Find (Ctrl+F): a list of the pages that mention a word, with how many times on each; Tab jumps from page to page
+• Selectable text that works with screen readers
 • PDFs stay in their own tab with their normal address, so AI assistants built into your browser, such as Gemini in Chrome, can still read them
 
 KEYBOARD FIRST
