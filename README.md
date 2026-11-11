@@ -22,6 +22,8 @@
 - **LaTeX math** in notes: `$inline$`, `$$display$$`, `\(…\)`, `\[…\]` and `align`-style environments, drawn as sharp vector shapes.
 - **Page tools**: right-click a page to rotate or delete it, or work on ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
 - **Fit width, fit page and two-page view**, with smooth resizing even on long documents. The toolbar shows the page you're on; type a number (or press <kbd>G</kbd>) to jump to any page.
+- **Text recognition (OCR)** for scanned PDFs: pages without text are read automatically in the background, with a small progress bar (you can stop it). The text becomes selectable, searchable and highlightable, and saved copies contain it as invisible text, so they're searchable everywhere. Runs entirely on your computer with the bundled [Tesseract](https://github.com/tesseract-ocr/tesseract) engine; English text. PDFs that already have text are left alone.
+- **Compression**: the first time you open a PDF that could be more than 20% smaller (usually because of oversized images), a small card offers to compress it. Copies you save are then smaller; nothing else changes.
 - **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
 - **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
 - **Undo and redo** for everything, including page changes.
@@ -104,6 +106,7 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 |---|---|
 | Read and change data on all websites (`<all_urls>`) | A tiny script checks whether each page is a PDF; only if it is does Inkfold replace Chrome's PDF viewer in that tab. Other pages are never read or changed. It also lets Inkfold load the PDF you opened from whichever site it's on. |
 | `activeTab` | To open the PDF in the current tab when you click the toolbar icon. |
+| `offscreen` (OCR) | Text recognition for scanned pages runs in the same hidden extension page, in a worker, with the bundled Tesseract engine and English model. Page images never leave your computer. |
 | `clipboardRead` and `offscreen` | To offer the Markdown you copied, read only when you open **Add a note**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
 | `contextMenus` | The right-click option on the toolbar icon to turn automatic opening on or off. |
 | `storage` | To remember your settings. |
@@ -111,7 +114,8 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 ## Limitations
 
 - Password-protected PDFs can't be opened. Encrypted PDFs can be annotated but not saved.
-- The highlighter needs selectable text. Scanned pages without a text layer can be marked with rectangles instead.
+- Text recognition reads English text, and pages need to be the right way up (as you see them in Inkfold). Handwriting is not recognised. Recognised text is kept only in copies you save.
+- Compression re-encodes large images as JPEG at about 220 dpi. Images in unusual formats (CMYK, indexed colours, masks) are left as they are.
 - Notes use the PDF standard fonts, which cover Western European languages. Other scripts (for example Devanagari or CJK) and emoji can't be shown in notes yet.
 - When a web PDF opens in Inkfold, it is read again from the browser's cache or the site. Links that only work once, or PDFs produced by submitting a form, may need to be downloaded and dropped onto Inkfold.
 - Saving from a plain `http://` (not `https://`) site downloads the copy instead of asking where to save it, because Chrome only allows the save dialog on secure pages.
@@ -132,7 +136,8 @@ extension/          The extension itself (load this folder in Chrome)
   manifest.json
   background.js     Toolbar button, right-click menu, welcome on install
   content.js        Opens PDFs (web and local) in Inkfold, in their own tab
-  offscreen.*       Reads the clipboard for notes, and local PDF files
+  offscreen.*       Reads the clipboard for notes and local PDF files; runs text recognition (OCR)
+  compress.js       Makes a smaller copy of a PDF (image re-encoding, stream compression)
   viewer.html/.css  The viewer UI
   viewer.js         Viewer, annotations, page operations, saving and splitting
   notes.js          Markdown -> PDF pages

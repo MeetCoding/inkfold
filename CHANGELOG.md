@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0: text recognition for scanned PDFs, and compression
+
+- **Text recognition (OCR)**: when you open a PDF with pages that have no text (a scan, photos of pages), Inkfold recognises the text in the background, with a small progress bar you can stop. The text becomes selectable and searchable, works with the highlighter and with assistants such as Gemini in Chrome, and copies you save contain it as invisible text, so they're searchable in any PDF reader. PDFs that already have text are left alone. It all runs on your computer, with the Tesseract engine and an English model bundled in the extension (about 7 MB).
+- **Compression**: the first time you open a PDF that could be more than 20% smaller, a small card offers to compress it. Compressing re-encodes oversized images (JPEG, at most 2,400 px on the long side), compresses uncompressed data and writes compact cross-references; pages, text, links and annotations are untouched. Copies you save are then smaller. Each PDF is checked only once.
+
 ## 1.10.0: type notes, and note pages sized to fit
 
 - **Add a note** (<kbd>N</kbd> or **+ Note**) now opens a dialog: type the note right there, or use the Markdown on your clipboard. The clipboard option shows what you copied, and is unavailable when the clipboard has no text. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds the note.

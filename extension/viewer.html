@@ -139,6 +139,17 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 
+<div id="ocr" role="status" hidden>
+  <span id="ocrLabel">Recognising text…</span>
+  <span class="bar" role="progressbar" aria-label="Text recognition" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="ocrBar"></i></span>
+  <button id="ocrStop" title="Stop recognising text" aria-label="Stop recognising text"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+</div>
+
+<div id="notice" role="alertdialog" aria-labelledby="noticeText" hidden>
+  <p id="noticeText"></p>
+  <div class="actions"><button id="noticeNo"></button><button id="noticeYes" class="primary"></button></div>
+</div>
+
 <dialog id="dlg" aria-labelledby="dlgTitle">
   <form method="dialog">
     <h2 id="dlgTitle"></h2>

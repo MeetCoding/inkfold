@@ -1,6 +1,6 @@
 import * as pdfjs from './lib/pdf.min.mjs';
 import { notePdf } from './notes.js';
-import { layout, cached, svgOf, pdfOps, SIZES, PAD } from './textbox.js';
+import { layout, cached, svgOf, pdfOps, SIZES, PAD, cleanWith } from './textbox.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -74,6 +74,8 @@ const PALETTES = {
 };
 const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}) };
 let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null;
+const ocrBusy = new Set();      // main-document page indexes still waiting for text recognition
+const ocrText = new Map();      // main-document page index -> text recognised on it (pdf.js text items, PDF points)
 const snapshot = () => JSON.stringify({ entries, shapes });
 
 /* ---------- loading ---------- */
@@ -105,6 +107,10 @@ async function openPdf(buf, fileName) {
   io.disconnect();
   views.clear();
   [name, entries, shapes, history, future, sel, dirty] = [fileName, [], [], [], [], null, false];
+  ocrText.clear();
+  ocrBusy.clear();
+  showOcr(null);
+  $('notice').hidden = true;
   document.body.classList.add('loaded');
 
   const { info = {} } = await main.pdf.getMetadata().catch(() => ({}));
@@ -141,6 +147,11 @@ async function openPdf(buf, fileName) {
   setZoom(fitZoom(fit ?? 'auto'), fit);
   scrollTo(0, 0);
   say(info.EncryptFilterName ? 'This PDF is encrypted: you can annotate it, but it cannot be saved.' : '', true);
+
+  // In the background: offer to compress a PDF that's much bigger than it needs to be (once per file),
+  // and recognise the text on pages that have none, such as scans.
+  checkCompression(id, !!info.EncryptFilterName);
+  autoOcr(id);
 
   // Build every page's text layer in the background, so the whole document is selectable,
   // searchable with Ctrl+F, and readable by assistants and screen readers, not just the pages in view.
@@ -288,13 +299,162 @@ function textLayer(p) {   // invisible, selectable text laid over the canvas
     div.className = 'textLayer';
     div.addEventListener('pointerdown', () => div.classList.add('selecting'));
     p.svg.before(div);
-    p.text = new pdfjs.TextLayer({ textContentSource: p.page.streamTextContent(), container: div, viewport: p.vp });
+    const ocr = p.e.doc === 'main' && ocrText.get(p.e.i);
+    const textContentSource = ocr ? { items: ocr, styles: OCR_STYLES, lang: 'en' } : p.page.streamTextContent();
+    p.text = new pdfjs.TextLayer({ textContentSource, container: div, viewport: p.vp });
     try { await p.text.render(); } catch {}
     p.text.update({ viewport: p.vp });   // in case the page was rotated or zoomed meanwhile
     const end = document.createElement('div');   // lets a drag that starts in the margin still select text
     end.className = 'endOfContent';
     div.append(end);
   })();
+}
+
+/* ---------- recognising text (OCR) ---------- */
+
+// Pages without text of their own (scans, photos of pages) are read by Tesseract, in the extension's hidden
+// helper page, one page at a time. What it finds becomes an ordinary text layer, so it can be selected,
+// searched, highlighted and read by assistants, and it's saved into copies as invisible text.
+const OCR_STYLES = { ocr: { fontFamily: 'sans-serif', ascent: 0.8, descent: -0.2, vertical: false } };
+let ocrStop = false;
+
+function showOcr(state) {   // null hides it; otherwise { done, total }
+  const box = $('ocr');
+  box.hidden = !state;
+  if (!state) return;
+  const pct = Math.round(100 * state.done / state.total);
+  $('ocrLabel').textContent = `Recognising text · page ${Math.min(state.done + 1, state.total)} of ${state.total}`;
+  $('ocrBar').style.width = Math.max(4, pct) + '%';
+  box.querySelector('.bar').setAttribute('aria-valuenow', pct);
+}
+
+async function autoOcr(id) {
+  const main = docs.get('main');
+  const todo = [];
+  for (const [i, page] of main.pages.entries()) {
+    const tc = await page.getTextContent().catch(() => null);
+    if (id !== loadId) return;
+    const chars = tc ? tc.items.reduce((n, it) => n + (it.str?.replace(/\s/g, '').length ?? 0), 0) : 0;
+    if (chars < 8) todo.push(i);
+  }
+  if (!todo.length) return;   // the PDF already has its text
+  ocrStop = false;
+  todo.forEach(i => ocrBusy.add(i));
+  let done = 0, found = 0;
+  showOcr({ done, total: todo.length });
+  for (const i of todo) {
+    if (id !== loadId || ocrStop) break;
+    let result, vp;
+    try {
+      const shot = await pageImage(main.pages[i]);
+      vp = shot.vp;
+      result = await chrome.runtime.sendMessage({ type: 'ocr', image: shot.image });
+    } catch (e) { result = { error: String(e) }; }
+    if (id !== loadId) return;
+    if (!result || result.error) {
+      showOcr(null);
+      ocrBusy.clear();
+      return say('Inkfold couldn’t recognise the text on this PDF’s scanned pages.', { long: true });
+    }
+    const items = ocrItems(result.lines, vp);
+    if (items.length) {
+      ocrText.set(i, items);
+      found++;
+      for (const p of views.values()) if (p.e.doc === 'main' && p.e.i === i) rebuildText(p);
+    }
+    ocrBusy.delete(i);
+    showOcr({ done: ++done, total: todo.length });
+  }
+  ocrBusy.clear();
+  showOcr(null);
+  if (id !== loadId) return;
+  if (ocrStop) say(`Stopped recognising text. ${found ? `The ${found} page${found === 1 ? '' : 's'} already done keep their text.` : ''}`);
+  else if (found) say(`Recognised the text on ${found} scanned page${found === 1 ? '' : 's'}. You can now select, search and highlight it, and copies you save keep it.`, { long: true });
+}
+
+async function pageImage(page) {   // the page as a ~200 dpi JPEG, upright as it's meant to be read
+  const [x0, y0, x1, y1] = page.view, side = Math.max(x1 - x0, y1 - y0);
+  const vp = page.getViewport({ scale: Math.min(200 / 72, 2400 / side) });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(vp.width);
+  canvas.height = Math.ceil(vp.height);
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvas, canvasContext: g, viewport: vp, annotationMode: pdfjs.AnnotationMode.DISABLE }).promise;
+  const image = canvas.toDataURL('image/jpeg', 0.92);
+  canvas.width = canvas.height = 0;
+  return { vp, image };
+}
+
+// Tesseract's words (image pixels) -> pdf.js text items (PDF points). Each word carries the space after it,
+// and spans up to the next word, so selecting a line copies it as one line of text.
+function ocrItems(lines, vp) {
+  const items = [];
+  for (const line of lines ?? []) {
+    const H = line.b[3] - line.b[1];
+    if (H <= 2) continue;
+    const base = line.b[3] - 0.2 * H;
+    line.words.forEach((w, k) => {
+      const next = line.words[k + 1];
+      const x0 = w.b[0], x1 = next ? next.b[0] : w.b[2];
+      const [ox, oy] = vp.convertToPdfPoint(x0, base), [ex, ey] = vp.convertToPdfPoint(x1, base), [tx, ty] = vp.convertToPdfPoint(x0, base - H);
+      const width = Math.hypot(ex - ox, ey - oy), size = Math.hypot(tx - ox, ty - oy), a = Math.atan2(ey - oy, ex - ox);
+      const cos = Math.cos(a), sin = Math.sin(a);
+      items.push({
+        str: next ? w.t + ' ' : w.t, dir: 'ltr', width, height: size, fontName: 'ocr', hasEOL: !next,
+        transform: [size * cos, size * sin, -size * sin, size * cos, ox, oy],
+      });
+    });
+  }
+  return items;
+}
+
+function rebuildText(p) {   // swap a page's text layer for a fresh one (after its text was recognised)
+  try { p.text?.cancel(); } catch {}
+  p.div.querySelector('.textLayer')?.remove();
+  p.text = null;
+  p.textReady = null;
+  textLayer(p);
+}
+
+/* ---------- offering to compress ---------- */
+
+const fmtSize = n => (n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB');
+
+// Once per file (remembered by its fingerprint), check how much smaller it could be; if that's more
+// than a fifth, offer it. Compressing swaps in the smaller version for the copies you save.
+async function checkCompression(id, encrypted) {
+  const main = docs.get('main'), fp = main.pdf.fingerprints?.[0];
+  const seen = store.get('compressChecked', []);
+  if (encrypted || !fp || seen.includes(fp) || main.bytes.length < 100_000) return;
+  await new Promise(r => setTimeout(r, 1500));   // let the first pages draw first
+  if (id !== loadId) return;
+  let smaller;
+  try { smaller = await (await import('./compress.js')).compressPdf(main.bytes); } catch { return; }
+  if (id !== loadId) return;
+  store.set('compressChecked', [...seen.slice(-299), fp]);
+  const before = main.bytes.length, after = smaller.length, saved = 1 - after / before;
+  if (saved <= 0.2) return;
+  notice({
+    text: `This PDF could be ${Math.round(saved * 100)}% smaller (${fmtSize(before)} → ${fmtSize(after)}), mostly by storing its images more efficiently. Compress it?`,
+    yes: 'Compress', no: 'Not now',
+    onYes: () => {
+      if (id !== loadId) return;
+      main.bytes = smaller;
+      dirty = true;
+      say(`Compressed. Copies you save are now about ${fmtSize(after)}. Your original file isn’t changed.`, { action: { label: 'Save a copy', fn: save } });
+    },
+  });
+}
+
+function notice({ text, yes, no, onYes }) {
+  $('noticeText').textContent = text;
+  $('noticeYes').textContent = yes;
+  $('noticeNo').textContent = no;
+  $('noticeYes').onclick = () => { $('notice').hidden = true; onYes(); };
+  $('noticeNo').onclick = () => { $('notice').hidden = true; };
+  $('notice').hidden = false;
 }
 
 /* ---------- zoom and layout ---------- */
@@ -757,6 +917,7 @@ function up() {
 // In select mode, a plain click on a highlight selects it; a drag over it still selects text.
 function pressPage(e, p) {
   if (tool === 'highlight' && !e.button && p.textReady && !p.div.querySelector('.textLayer span')) {
+    if (p.e.doc === 'main' && ocrBusy.has(p.e.i)) return say('Inkfold is still reading the text on this scanned page. Try again in a moment.');
     p.textReady.then(() => {
       if (!p.div.querySelector('.textLayer span')) say('This page has no selectable text (it may be a scanned image), so it can’t be highlighted. Draw a rectangle (R) instead.', { long: true });
     });
@@ -957,7 +1118,10 @@ function download(data, file) {
 // It edits the original file rather than copying pages out, so bookmarks, metadata and forms survive;
 // anything only the dropped pages used is then removed, so deleted pages really are gone from the file.
 async function build(list) {
-  const { PDFDocument, PDFName, PDFNumber, PDFString, PDFHexString, PDFDict, PDFArray, PDFRef, PDFStream, StandardFonts } = await lib();
+  const {
+    PDFDocument, PDFName, PDFNumber, PDFString, PDFHexString, PDFDict, PDFArray, PDFRef, PDFStream, StandardFonts,
+    pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode, setCharacterSqueeze, radians,
+  } = await lib();
   let helv = null;   // Helvetica, added only if there are text boxes
   const doc = await PDFDocument.load(docs.get('main').bytes, { updateMetadata: false });
   const ctx = doc.context, N = PDFName.of;
@@ -1047,6 +1211,25 @@ async function build(list) {
       dict = { Subtype: s.type === 'rect' ? 'Square' : 'Circle', Rect: box, BS: { W: w }, AP: { N: ctx.register(look) } };
     }
     pg.node.addAnnot(ctx.register(ctx.obj({ Type: 'Annot', ...dict, ...extra, F: 4, T: PDFString.of(MARK) })));
+  }
+
+  // Recognised text goes onto its pages as invisible text, so the copy can be searched and selected anywhere.
+  const scanned = list.filter(e => e.doc === 'main' && ocrText.has(e.i));
+  if (scanned.length) {
+    helv ??= await doc.embedFont(StandardFonts.Helvetica);
+    const clean = cleanWith(new Set(helv.getCharacterSet()));
+    for (const e of scanned) {
+      const pg = target.get(e.id);
+      pg.node.wrapContentStreams(ctx.register(ctx.stream('q')), ctx.register(ctx.stream('Q')));   // our text starts from a clean state
+      for (const it of ocrText.get(e.i)) {
+        const t = clean(it.str);
+        const [a, b, , , x, y] = it.transform, size = Math.hypot(a, b), natural = t.trim() ? helv.widthOfTextAtSize(t, size) : 0;
+        if (!natural || size < 1) continue;
+        pg.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible), setCharacterSqueeze(+(100 * it.width / natural).toFixed(2)));
+        pg.drawText(t, { x, y, size, font: helv, rotate: radians(Math.atan2(b, a)) });
+        pg.pushOperators(popGraphicsState());
+      }
+    }
   }
 
   // Swap in a fresh, flat page tree holding just these pages, in this order.
@@ -1187,6 +1370,7 @@ const thisPage = () => (pages.length ? new Set([pages[targetIndex()].id]) : null
 
 for (const b of document.querySelectorAll('button[data-tool]')) b.onclick = () => setTool(b.dataset.tool);
 for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
+$('ocrStop').onclick = () => { ocrStop = true; showOcr(null); };
 $('tsmaller').onclick = () => setTextSize(-1);
 $('tbigger').onclick = () => setTextSize(1);
 // The size buttons don't take focus, so a text box being typed in stays open.
@@ -1361,6 +1545,7 @@ async function welcome() {
   settingsBtn.onclick = () => chrome.runtime.sendMessage({ type: 'openSettings' });
   const list = el2('ul', {},
     el2('li', {}, el2('strong', {}, 'PDFs now open here. '), 'Any PDF you open in Chrome opens in Inkfold. To use Chrome’s own viewer again, right-click the Inkfold toolbar icon and untick “Open every PDF with Inkfold”.'),
+    el2('li', {}, el2('strong', {}, 'Scanned PDFs become searchable. '), 'Inkfold reads the text of pages that have none, in the background, right on your computer.'),
     el2('li', {}, el2('strong', {}, 'Your files stay on your computer. '), 'Nothing is uploaded. Saving makes a new copy; your original PDF is never changed.'),
     el2('li', {}, el2('strong', {}, 'Keyboard first. '), 'Every button shows its shortcut in brackets. Press ? for the full list.'),
   );

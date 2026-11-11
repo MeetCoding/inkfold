@@ -36,18 +36,20 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === 'fileAccess') { chrome.extension.isAllowedFileSchemeAccess().then(reply); return true; }
   if (msg?.type === 'openSettings') { chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` }); return false; }
   if (msg?.type === 'readClipboard') { offscreen({ type: 'offscreen:readClipboard' }).then(reply, () => reply(null)); return true; }
+  if (msg?.type === 'ocr') { offscreen({ type: 'offscreen:ocr', image: msg.image }).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg?.type === 'readFile') { offscreen({ type: 'offscreen:readFile', url: msg.url }).then(reply, () => reply(null)); return true; }
   return false;
 });
 
 // Two things a PDF tab can't do itself, done in a hidden extension page:
 // • read the clipboard (from a web page, Chrome would ask on behalf of that website), only when the user opens "Add a note";
-// • read a local PDF's bytes (a file:// page can't read its own file), only for the PDF open in that tab.
+// • read a local PDF's bytes (a file:// page can't read its own file), only for the PDF open in that tab;
+// • recognise text (OCR) in pages that have none, with the bundled Tesseract engine, in a worker of its own.
 async function offscreen(msg) {
   if (!(await chrome.offscreen.hasDocument?.())) {
     await chrome.offscreen.createDocument({
-      url: 'offscreen.html', reasons: ['CLIPBOARD', 'BLOBS'],
-      justification: 'Read Markdown the user copied when they add a note, and read a local PDF the user opened',
+      url: 'offscreen.html', reasons: ['CLIPBOARD', 'BLOBS', 'WORKERS'],
+      justification: 'Read Markdown the user copied when they add a note, read a local PDF the user opened, and recognise text in scanned pages on the device',
     });
   }
   return chrome.runtime.sendMessage(msg);
