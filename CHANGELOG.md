@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.1
+
+- Fixed: opening a second PDF over one already open (with Open or by dropping a file) failed with "d.pdf.destroy is not a function", and the old PDF stayed on screen.
+- Fixed: PDFs from your computer were read on the page's main thread ("Warning: Setting up fake worker"), which made big files slow to open and could freeze the tab. Chrome refuses the usual background worker on file:// pages, so Inkfold now starts it in a form those pages allow.
+- Fixed: a harmless but noisy CORS error in the console every time a PDF from your computer was opened.
+
 ## 1.8.0
 
 - **Page number** in the toolbar shows the page you're on and the total. Type a number and press Enter (or press <kbd>G</kbd>) to jump to that page.

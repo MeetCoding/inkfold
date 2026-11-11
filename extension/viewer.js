@@ -12,17 +12,27 @@ async function startWorker() {
   pdfjs.GlobalWorkerOptions.workerSrc = src;
   if (!IN_PAGE) return;
   // A page can't start a worker from the extension's address, but it can from a copy of the script.
-  // If the site forbids that too, pdf.js falls back to running on the main thread.
+  // Local files (file://) have an opaque origin, where Chrome refuses module workers made from a copy;
+  // there the same code runs as a classic worker, with its one export and its import.meta removed.
+  // Without any worker pdf.js would read PDFs on the page's main thread ("Setting up fake worker").
   try {
     const code = await (await fetch(src)).text();
-    const w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })), { type: 'module' });
-    const ok = await Promise.race([
-      new Promise(r => setTimeout(() => r(true), 400)),
-      new Promise(r => w.addEventListener('error', () => r(false), { once: true })),
-    ]);
-    if (ok) pdfjs.GlobalWorkerOptions.workerPort = w;
-    else w.terminate();
+    const classic = code.replace(/export\s*\{\s*WorkerMessageHandler\s*\}\s*;?\s*$/, '').replaceAll('import.meta.url', JSON.stringify(src));
+    const w = await tryWorker(code, { type: 'module' }) ?? await tryWorker(classic, {});
+    if (w) pdfjs.GlobalWorkerOptions.workerPort = w;
   } catch {}
+}
+
+async function tryWorker(code, opts) {   // the worker, once it has started without a script error; else null
+  const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+  let w;
+  try { w = new Worker(url, opts); } catch { return null; }
+  const ok = await Promise.race([
+    new Promise(r => setTimeout(() => r(true), 600)),
+    new Promise(r => w.addEventListener('error', () => r(false), { once: true })),
+  ]);
+  if (!ok) w.terminate();
+  return ok ? w : null;
 }
 
 const MARK = 'Inkfold';         // author tag on the annotations we write, so we can re-edit them later
@@ -81,7 +91,8 @@ async function openPdf(buf, fileName) {
     return fail(e.name === 'PasswordException' ? 'Password-protected PDFs are not supported.' : 'That could not be read as a PDF.');
   }
   if (id !== loadId) return;
-  old.forEach(d => d.pdf !== main.pdf && d.pdf.destroy());
+  // Free the documents being replaced. (pdf.js 6 documents have no destroy(); their loading task does.)
+  for (const d of old) if (d.pdf !== main.pdf) d.pdf.loadingTask?.destroy().catch(() => {});
   for (const [k] of docs) if (k !== 'main') docs.delete(k);
   io.disconnect();
   views.clear();
@@ -146,8 +157,7 @@ function fetchBytes(src) {   // XHR rather than fetch, because fetch cannot read
 }
 
 // A local PDF opened in its own tab: the page can't read its own file, so the extension reads it.
-async function localBytes(src) {
-  try { return await fetchBytes(src); } catch {}
+async function localBytes(src) {   // (reading it directly would only fail, with a CORS error in the console)
   const b64 = await chrome.runtime.sendMessage({ type: 'readFile', url: src });
   if (!b64) throw new Error('unreadable');
   const bin = atob(b64), out = new Uint8Array(bin.length);
