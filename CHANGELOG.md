@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.11.3: fixes
+
+- **Moving a page**: a clear marker now shows where the page will land: the pages either side move apart and a blue "Page 2 goes here" label sits in the gap. (The gap was too small to notice before, and the marker was placed against the pages' moving positions, so it could sit off-centre.)
+- **Pasting into a text box**: long pasted lines are wrapped to fit the page from where the box starts, the same way Magic paste does, keeping the lines the text already had and never breaking a formula. On versions of Chrome without automatic text-field sizing, the box being typed in now grows with its text instead of showing only its first line.
+- Buttons no longer end in "…" (Split, Save as one PDF, Merge and save, Add PDFs).
+
 ## 2.11.2: fixes
 
 - **Disabled buttons stay disabled-looking**: "Merge and save" (and the other main buttons) no longer light up under the pointer while they can't be used.

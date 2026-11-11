@@ -447,3 +447,17 @@ button.primary:disabled, button.primary:disabled:hover, #panel .row button.prima
 .splitmode { display: grid; grid-template-columns: 1fr 1fr; margin-top: 8px; }
 .splitmode button { width: auto; height: 28px; font-size: 12px; }
 .splitmode button[aria-checked="true"] { background: var(--bar); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+/* the marker in the gap a moving page would drop into */
+.dropspot {
+  position: fixed; left: 0; top: 0; z-index: 19; pointer-events: none; opacity: 0;
+  transition: opacity .2s, translate .32s cubic-bezier(.22, .9, .3, 1);
+}
+.dropspot.show { opacity: 1; }
+.dropspot span {
+  display: block; translate: -50% -50%; padding: 6px 14px 6px 12px; white-space: nowrap; border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: #fff; background: var(--accent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.dropspot span::before { content: '\2193\00a0'; }
+.dropspot.v span { writing-mode: vertical-rl; padding: 12px 6px 14px; }
+.dropspot.v span::before { content: ''; }

@@ -594,7 +594,7 @@ function drawMerge(focus = null) {
   }));
   const ok = mergeItems.filter(it => !it.error).length;
   $('merge').disabled = ok < 2;
-  $('merge').textContent = ok >= 2 ? `Merge ${ok} PDFs and save…` : 'Merge and save…';
+  $('merge').textContent = ok >= 2 ? `Merge ${ok} PDFs and save` : 'Merge and save';
   if (focus != null) list.children[focus]?.querySelector('.grip').focus();
 }
 
@@ -726,8 +726,9 @@ function startMove(p) {
   if (p.canvas) g.drawImage(p.canvas, 0, 0, c.width, c.height);
   const where = el2('span', {}, `Page ${from + 1}`);
   ghost.append(c, where);
-  document.body.append(ghost);
-  moving = { p, from, slot: from, ghost, where, parted: [], x: r.left + r.width / 2, y: Math.max(r.top, 80) + 40, scroll: 0, key: false };
+  const spot = el2('div', { class: 'dropspot', 'aria-hidden': 'true' }, el2('span', {}, `Page ${from + 1} goes here`));
+  document.body.append(ghost, spot);
+  moving = { p, from, slot: from, ghost, where, spot, parted: [], x: r.left + r.width / 2, y: Math.max(r.top, 80) + 40, scroll: 0, key: false };
   p.div.classList.add('lifted');
   document.body.classList.add('moving');
   placeGhost();
@@ -739,7 +740,10 @@ function startMove(p) {
 function slots() {
   const out = [], col = spread;
   const rect = q => {   // where the page is, leaving out how far it's been eased aside
-    const r = q.div.getBoundingClientRect(), [dx, dy] = q.part ?? [0, 0];
+    const r = q.div.getBoundingClientRect();
+    // (its current offset, mid-animation included, as the browser has it right now)
+    const t = q.part || q.div.style.translate ? getComputedStyle(q.div).translate : 'none';
+    const [dx = 0, dy = 0] = t === 'none' ? [] : t.split(' ').map(parseFloat);
     return { left: r.left - dx, right: r.right - dx, top: r.top - dy, bottom: r.bottom - dy, width: r.width, height: r.height };
   };
   pages.forEach((q, k) => {
@@ -769,7 +773,7 @@ function placeGhost() {
   }
   const sl = all[m.slot], same = m.slot === m.from || m.slot === m.from + 1;
   // The pages either side of the gap ease apart (unless the page would land where it already is).
-  const before = pages[m.slot - 1], after = pages[m.slot], push = 14;
+  const before = pages[m.slot - 1], after = pages[m.slot], push = 30;
   const want = same ? [] : [[before, -push], [after, push]].filter(([q]) => q && q !== m.p);
   for (const q of m.parted) if (!want.some(([w]) => w === q)) part(q, null);
   for (const [q, d] of want) part(q, sl.vertical ? [d, 0] : [0, d]);
@@ -779,6 +783,10 @@ function placeGhost() {
     : m.slot === 0 ? `Page ${m.from + 1} → first` : m.slot === n ? `Page ${m.from + 1} → last`
     : `Page ${m.from + 1} → between ${m.slot} and ${m.slot + 1}`;
   m.ghost.classList.toggle('same', same);
+  // A marker in the opened gap: "Page 2 goes here".
+  m.spot.classList.toggle('show', !same);
+  m.spot.classList.toggle('v', sl.vertical);
+  m.spot.style.translate = `${sl.x}px ${sl.y}px`;
   if (m.key) m.ghost.style.transform = `translate(${sl.vertical ? sl.x + 14 : sl.x + Math.min(sl.len / 2, 160) + 14}px, ${sl.y + 10}px)`;   // beside the gap
 }
 
@@ -803,6 +811,7 @@ function endMove(drop) {
   cancelAnimationFrame(m.scroll);
   m.ghost.remove();
   for (const q of m.parted) part(q, null);
+  m.spot.remove();
   m.p.div.classList.remove('lifted');
   document.body.classList.remove('moving');
   if (!drop || m.slot === m.from || m.slot === m.from + 1) return say(drop ? 'The page stays where it was.' : 'Move cancelled.');
@@ -1345,7 +1354,7 @@ function setSplitMode(mode) {
   $('splitHelp').textContent = mode === 'one'
     ? 'The ranges go into one new PDF, in the order you typed them, keeping your highlights, shapes and notes.'
     : 'Each range becomes its own file, keeping your highlights, shapes and notes. A save dialog opens for each, already named.';
-  $('split').firstChild.textContent = mode === 'one' ? 'Save as one PDF… ' : 'Split… ';
+  $('split').firstChild.textContent = mode === 'one' ? 'Save as one PDF ' : 'Split ';
 }
 document.querySelectorAll('.splitmode button').forEach(b => {
   b.addEventListener('mousedown', e => e.preventDefault());   // keep the focus in the range box
@@ -1796,6 +1805,11 @@ function editText(p, s, fresh = false) {
     if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.stopPropagation(); finishEdit(); }
   });
   ta.addEventListener('blur', () => finishEdit());
+  if (!CSS.supports('field-sizing', 'content')) {   // older Chrome: grow the box with its text by hand
+    const fit = () => { ta.style.height = 'auto'; ta.style.width = 'auto'; ta.style.height = ta.scrollHeight + 'px'; ta.style.width = Math.max(ta.scrollWidth, 40) + 'px'; };
+    ta.addEventListener('input', fit);
+    requestAnimationFrame(fit);
+  }
   ta.addEventListener('paste', e => {   // put copied text in as lines, whatever the source used to break them
     const d = e.clipboardData;
     let t = d?.getData('text/plain');
@@ -1809,8 +1823,15 @@ function editText(p, s, fresh = false) {
     }
     if (!t) return;
     e.preventDefault();
-    ta.setRangeText(lines(t), ta.selectionStart, ta.selectionEnd, 'end');
-    ta.dispatchEvent(new Event('input'));
+    // Long lines are wrapped to fit the page from where the box starts (as Magic paste does), keeping the
+    // lines it already had and never breaking a formula.
+    const [, , x1] = p.page.view, room = Math.max((x1 - p.page.view[0]) * 0.4, x1 - s.x1 - 18);
+    const at = [ta.selectionStart, ta.selectionEnd];
+    wrapText(lines(t), s.size, room).catch(() => lines(t)).then(w => {
+      if (editing?.ta !== ta) return;
+      ta.setRangeText(w, at[0], at[1], 'end');
+      ta.dispatchEvent(new Event('input'));
+    });
   });
   for (const ev of ['pointerdown', 'mousedown', 'dblclick']) ta.addEventListener(ev, e => e.stopPropagation());
   editing = { p, s, before, ta, fresh };
