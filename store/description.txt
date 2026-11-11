@@ -4,7 +4,7 @@ HIGHLIGHT, DRAW AND WRITE
 • A highlighter that follows the lines of real text, in any colour
 • Rectangles and ellipses to call out figures, tables and key passages
 • Text boxes anywhere on the page, in any size and colour, with LaTeX math: type $E = mc^2$ and it's typeset
-• Move, resize, recolour or delete anything you've added, and undo or redo every step
+• Move, resize or recolour anything you've added, wipe it away with the eraser, and undo or redo every step
 
 TURN MARKDOWN INTO NOTE PAGES
 Press N and type a note, or use Markdown you copied from your notes app, an AI chat or anywhere else. Inkfold adds a cleanly typeset note page right after the page you're reading, as wide as that page and exactly as tall as your note. Headings, lists, checklists, tables, code, quotes and links are all supported, and so is LaTeX math ($inline$, $$display$$ and align-style environments), drawn as sharp vector graphics.

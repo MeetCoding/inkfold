@@ -73,7 +73,7 @@ const PALETTES = {
   ink: [['Red', '#e5484d'], ['Orange', '#e8590c'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
 };
 const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}) };
-let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null;
+let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null, erasing = null, eraseHover = null;
 const ocrBusy = new Set();      // main-document page indexes still waiting for text recognition
 const ocrText = new Map();      // main-document page index -> text recognised on it (pdf.js text items, PDF points)
 const snapshot = () => JSON.stringify({ entries, shapes });
@@ -223,6 +223,8 @@ function makeView(e) {
   num.setAttribute('aria-hidden', 'true');
   div.append(hl, svg, num);
   svg.addEventListener('pointerdown', ev => down(ev, p));
+  svg.addEventListener('pointermove', ev => { if (tool === 'eraser' && !erasing) hoverErase(underEraser(ev, p), p); });
+  svg.addEventListener('pointerleave', () => hoverErase(null, p));
   div.addEventListener('mousedown', ev => pressPage(ev, p));
   views.set(e.id, p);
   return p;
@@ -702,7 +704,7 @@ function paint(p) {
     if (s.type === 'highlight') {
       for (const r of s.rects) {
         const v = view(p, r);
-        under.push(el('rect', { x: v.x, y: v.y, width: v.w, height: v.h, fill: s.color }));
+        under.push(el('rect', { x: v.x, y: v.y, width: v.w, height: v.h, fill: s.color, class: s === eraseHover ? 'erasing' : '' }));
         if (s === sel) over.push(el('rect', { class: 'outline', x: v.x - 2, y: v.y - 2, width: v.w + 4, height: v.h + 4 }));
       }
       return;
@@ -712,7 +714,7 @@ function paint(p) {
     const [tag, geo] = s.type === 'rect'
       ? ['rect', { x: v.x, y: v.y, width: v.w, height: v.h }]
       : ['ellipse', { cx: v.x + v.w / 2, cy: v.y + v.h / 2, rx: v.w / 2, ry: v.h / 2 }];
-    over.push(el(tag, { ...geo, class: 'shape', fill: 'none', stroke: s.color, 'stroke-width': w }));
+    over.push(el(tag, { ...geo, class: s === eraseHover ? 'shape erasing' : 'shape', fill: 'none', stroke: s.color, 'stroke-width': w }));
     over.push(el(tag, { ...geo, class: 'hit', 'data-i': i, 'stroke-width': Math.max(w, 10) }));   // easier to grab
     if (s !== sel) return;
     over.push(el('rect', { class: 'outline', x: v.x, y: v.y, width: v.w, height: v.h }));
@@ -726,9 +728,43 @@ function paint(p) {
   });
   p.hl.replaceChildren(...under);
   p.svg.replaceChildren(...over);
-  p.div.querySelector('.delsel')?.remove();
-  if (sel?.page === p.id && shapes.includes(sel) && sel !== editing?.s) p.div.append(deleteButton(p));
   if (editing?.p === p) placeEditor();
+}
+
+/* ---------- eraser ---------- */
+
+// Does the eraser at (x, y), PDF points, touch this annotation? Shapes are caught by their outline,
+// highlights and text boxes anywhere inside.
+function touches(s, x, y, tol) {
+  const inBox = ([a, b, c, d], m) => x >= a - m && x <= c + m && y >= b - m && y <= d + m;
+  if (s.type === 'highlight') return s.rects.some(r => inBox(r, tol));
+  const box = boxOf(s);
+  if (s.type === 'text') return inBox(box, tol);
+  const m = (s.width || 1) / 2 + tol, [a, b, c, d] = box;
+  if (s.type === 'rect') return inBox(box, m) && !(x > a + m && x < c - m && y > b + m && y < d - m);
+  const cx = (a + c) / 2, cy = (b + d) / 2, rx = Math.max((c - a) / 2, 1e-3), ry = Math.max((d - b) / 2, 1e-3);
+  return Math.abs(Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * Math.min(rx, ry) <= m;
+}
+
+const underEraser = (e, p) => {
+  const [x, y] = point(e, p), tol = 6 / p.vp.scale;   // a few pixels of slack, whatever the zoom
+  return shapes.findLast(s => s.page === p.id && touches(s, x, y, tol)) ?? null;
+};
+
+function eraseAt(e, p) {
+  const [x, y] = point(e, p), tol = 6 / p.vp.scale;
+  const hit = shapes.filter(s => s.page === p.id && touches(s, x, y, tol));
+  if (!hit.length) return;
+  for (const s of hit) shapes.splice(shapes.indexOf(s), 1);
+  if (hit.includes(sel)) sel = null;
+  eraseHover = null;
+  paint(p);
+}
+
+function hoverErase(s, p) {   // fade what the eraser would remove
+  if (s === eraseHover) return;
+  eraseHover = s;
+  paint(p);
 }
 
 /* ---------- text boxes ---------- */
@@ -746,7 +782,7 @@ function paintText(p, s, i, over) {
   const L = layout(s.text, s.size);
   if (!ready(L)) { L.then(() => paint(p), () => {}); return; }
   const [ax, ay] = p.vp.convertToViewportPoint(s.x1, s.y2);
-  const g = el('g', { class: 'text', transform: `translate(${ax} ${ay}) rotate(${rotationOf(p)}) scale(${p.vp.scale})` });
+  const g = el('g', { class: s === eraseHover ? 'text erasing' : 'text', transform: `translate(${ax} ${ay}) rotate(${rotationOf(p)}) scale(${p.vp.scale})` });
   g.innerHTML = svgOf(L, s.color);
   over.push(g);
   const v = view(p, boxOf(s));
@@ -818,20 +854,6 @@ function setTextSize(step) {   // one size larger or smaller
   syncControls();
 }
 
-// A small delete button just outside the selected annotation's top-right corner (inside it if there's no room).
-function deleteButton(p) {
-  const boxes = sel.type === 'highlight' ? sel.rects.map(r => view(p, r)) : [view(p, boxOf(sel))];
-  const right = Math.max(...boxes.map(v => v.x + v.w)), top = Math.min(...boxes.map(v => v.y));
-  const W = p.div.clientWidth, S = 26;
-  const b = el2('button', { type: 'button', class: 'delsel', title: 'Delete this annotation (Del)', 'aria-label': 'Delete this annotation (Del)' });
-  b.innerHTML = ICONS.trash;
-  b.style.left = clamp(right + 4, 2, W - S - 2) + 'px';
-  b.style.top = (top - S - 4 >= 2 ? top - S - 4 : top + 4) + 'px';
-  for (const ev of ['pointerdown', 'mousedown']) b.addEventListener(ev, e => e.stopPropagation());
-  b.onclick = remove;
-  return b;
-}
-
 const repaint = () => pages.forEach(paint);
 
 function select(s) {
@@ -849,6 +871,12 @@ function point(e, p) {   // pointer position as PDF coordinates, kept inside the
 
 function down(e, p) {
   if (e.button !== 0) return;
+  if (tool === 'eraser') {   // erase what's under the pointer, and anything else the drag passes over
+    e.preventDefault();
+    erasing = { p, before: snapshot() };
+    p.svg.setPointerCapture(e.pointerId);
+    return eraseAt(e, p);
+  }
   const t = e.target, at = point(e, p), before = snapshot();
   if (t.dataset.h) {                                   // resize: the opposite corner stays put
     const v = view(p, [sel.x1, sel.y1, sel.x2, sel.y2]), k = 3 - t.dataset.h;
@@ -882,6 +910,7 @@ function down(e, p) {
 }
 
 function move(e) {
+  if (erasing) return eraseAt(e, erasing.p);
   if (!drag) return;
   const [x, y] = point(e, drag.p);
   if (drag.anchor) {
@@ -899,6 +928,11 @@ function up() {
     const { p, s, fresh } = pendingText;
     pendingText = null;
     setTimeout(() => editText(p, s, fresh));
+  }
+  if (erasing) {   // one undo step for the whole stroke
+    if (snapshot() !== erasing.before) commit(erasing.before);
+    erasing = null;
+    syncControls();
   }
   if (!drag) return;
   const px = drag.p.vp.scale;
@@ -997,7 +1031,7 @@ const curColor = () => (sel?.color ?? colors[kind()]).toLowerCase();
 
 function syncControls() {   // the colour and thickness boxes show the selection, or the defaults for the tool
   // With the select tool and nothing selected there's nothing to style, so the controls are hidden.
-  const styling = tool !== 'select' || !!sel;
+  const styling = (tool !== 'select' && tool !== 'eraser') || !!sel;
   $('styleBox').hidden = $('styleSep').hidden = !styling;
   const pal = palette(), box = $('palette');
   if (box.dataset.set !== pal[0][1]) {   // rebuild when switching between highlighter and ink colours
@@ -1067,6 +1101,8 @@ function redo() {
 
 function setTool(t) {
   finishEdit();
+  if (eraseHover) { eraseHover = null; repaint(); }
+  if (t === 'eraser') select(null);
   tool = document.body.dataset.tool = t;
   for (const b of document.querySelectorAll('button[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === t);
   if (t === 'highlight') highlightSelection();   // text already selected? highlight it straight away
@@ -1497,7 +1533,7 @@ addEventListener('resize', () => {
 
 // Every shortcut, in one place. Keys listed in the buttons' labels and in the ? sheet.
 const KEYS = {
-  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'), 't': () => setTool('text'),
+  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'), 't': () => setTool('text'), 'e': () => setTool('eraser'),
   '-': () => setTextSize(-1), '=': () => setTextSize(1), '+': () => setTextSize(1),
   'c': nextColor,
   '1': () => setWidth(1), '2': () => setWidth(2), '3': () => setWidth(4),

@@ -26,6 +26,7 @@
 - **Compression**: the first time you open a PDF that could be more than 20% smaller (usually because of oversized images), a small card offers to compress it. Copies you save are then smaller; nothing else changes.
 - **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
 - **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
+- **Eraser** (<kbd>E</kbd>): click or drag across highlights, shapes and text boxes to remove them.
 - **Undo and redo** for everything, including page changes.
 - **A keyboard shortcut for every action**, shown in brackets on every button. Press <kbd>?</kbd> for the full list.
 
@@ -60,7 +61,8 @@ Coming soon.
 | Highlight | Press <kbd>H</kbd> and drag across text. Or select text first, then press <kbd>H</kbd>. |
 | Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Pick one of five colours in the toolbar (<kbd>C</kbd> for the next), thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
 | Write | <kbd>T</kbd>, then click where the text should go and type. <kbd>Enter</kbd> starts a new line; <kbd>Esc</kbd> or a click outside finishes. `$…$` is LaTeX. Text size with <kbd>−</kbd> / <kbd>+</kbd>. To change a box later, double-click it (or click it with <kbd>T</kbd>); drag it to move it. |
-| Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, click the bin at its corner or press <kbd>Del</kbd>. |
+| Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, press <kbd>Del</kbd>. |
+| Erase | <kbd>E</kbd> for the eraser, then click a highlight, shape or text box to remove it, or drag across several at once. Whatever it would remove fades as you point at it; one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings back a whole stroke. |
 | Add a note | Press <kbd>N</kbd> (or **+ Note**), then type the note or choose **Use the clipboard** (offered when it holds text). <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. |
 | Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Split | In the Pages panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
@@ -74,7 +76,7 @@ Coming soon.
 | <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
 | <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
 | <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |
-| <kbd>T</kbd> | Text box | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
+| <kbd>T</kbd> / <kbd>E</kbd> | Text box / eraser | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
 | <kbd>C</kbd> | Next colour | <kbd>J</kbd> / <kbd>K</kbd> | Next / previous page |
 | | | <kbd>G</kbd> | Go to page number |
 | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |

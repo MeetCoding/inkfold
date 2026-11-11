@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.0: eraser
+
+- **Eraser** (<kbd>E</kbd>) in the toolbar: click a highlight, rectangle, ellipse or text box to remove it, or drag across several to remove them all in one stroke (one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings the stroke back). Whatever the eraser would remove fades as you point at it. Shapes are caught by their outline, so clicking inside a rectangle doesn't remove it.
+- The delete button at the corner of a selected annotation is gone. <kbd>Del</kbd> still removes the selected one.
+- Fixed: the full-screen button's icon sat a little high in the toolbar.
+
 ## 2.1.0: full screen
 
 - A **full screen** button next to two-page view (or <kbd>Shift</kbd>+<kbd>F</kbd>). In full screen the same button, <kbd>Shift</kbd>+<kbd>F</kbd> or <kbd>Esc</kbd> leaves it.
