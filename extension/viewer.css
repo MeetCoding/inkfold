@@ -35,6 +35,16 @@ button.primary:hover { background: var(--ink); opacity: .88; }
 select { padding: 0 6px; }
 select:disabled { opacity: .35; cursor: default; }
 #zoom { width: 116px; font-variant-numeric: tabular-nums; }
+
+/* Segmented controls: line thickness, text size */
+.seg { display: flex; align-items: center; gap: 1px; padding: 2px; border-radius: 9px; background: var(--hover); }
+.seg[hidden] { display: none; }
+.seg button { width: 30px; height: 26px; padding: 0; display: grid; place-items: center; border-radius: 7px; color: var(--dim); }
+.seg button svg { width: 20px; height: 16px; }
+.seg button:hover:not(:disabled) { background: color-mix(in srgb, var(--bar) 60%, transparent); color: var(--ink); }
+.seg button[aria-checked="true"] { background: var(--bar); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .14), 0 0 0 1px var(--line); }
+.seg button:disabled { opacity: .4; cursor: default; }
+#tsize output { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: var(--ink); }
 #pageBox { gap: 5px; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #pageNum {
   width: 44px; height: 28px; padding: 0 6px; text-align: center; font: inherit; color: var(--ink);
@@ -72,6 +82,20 @@ body[data-tool="select"] .shapes, body[data-tool="highlight"] .shapes { pointer-
 body[data-tool="select"] .hit { cursor: move; }
 body[data-tool="highlight"] .shapes * { pointer-events: none; }
 body[data-tool="highlight"] .textLayer :is(span, br) { cursor: text; }
+/* Text boxes */
+.shapes .text { pointer-events: none; }
+.shapes .thit { fill: transparent; stroke: none; pointer-events: all; }
+body[data-tool="text"] .shapes { cursor: text; }
+body[data-tool="text"] .thit { cursor: text; }
+body[data-tool="highlight"] .thit { pointer-events: none; }
+.tedit {
+  position: absolute; z-index: 5; margin: 0; transform-origin: 0 0; field-sizing: content; min-width: 4em; min-height: 1.3em;
+  resize: none; overflow: hidden; white-space: pre; border: 0; border-radius: 2px; background: rgb(255 255 255 / .9);
+  outline: 1.5px solid var(--accent); outline-offset: 2px; line-height: 1.22;
+  font-family: Helvetica, Arial, "Liberation Sans", "Nimbus Sans", sans-serif; color-scheme: light;
+}
+.tedit::placeholder { color: #9a978f; }
+
 .outline { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
 .handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; pointer-events: all; }
 /* Delete button at the corner of the selected annotation */

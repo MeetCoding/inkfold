@@ -1,8 +1,9 @@
 Inkfold turns Chrome into a fast, private PDF annotator. Open any PDF and start marking it up: no account, no uploads, nothing to set up.
 
-HIGHLIGHT AND DRAW
+HIGHLIGHT, DRAW AND WRITE
 • A highlighter that follows the lines of real text, in any colour
 • Rectangles and ellipses to call out figures, tables and key passages
+• Text boxes anywhere on the page, in any size and colour, with LaTeX math: type $E = mc^2$ and it's typeset
 • Move, resize, recolour or delete anything you've added, and undo or redo every step
 
 TURN MARKDOWN INTO NOTE PAGES

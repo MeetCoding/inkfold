@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.0
+
+- **Text boxes** (<kbd>T</kbd>): click anywhere on a page and type. Text between `$` signs is LaTeX and is typeset when you finish. Change the colour, and the size with the new size buttons or <kbd>−</kbd> / <kbd>+</kbd>. Double-click a box to edit it, drag to move it. The font is Helvetica, one of the fonts every PDF reader has, so boxes look the same everywhere. Saved as standard `FreeText` annotations, editable again in Inkfold.
+- Line thickness is now three line buttons instead of a drop-down.
+
 ## 1.8.1
 
 - Fixed: opening a second PDF over one already open (with Open or by dropping a file) failed with "d.pdf.destroy is not a function", and the old PDF stayed on screen.

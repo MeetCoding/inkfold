@@ -10,9 +10,9 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 
 **Name:** Inkfold
 
-**Summary** (manifest description, 129 of 132 characters):
+**Summary** (manifest description, 132 of 132 characters):
 
-> Highlight, draw, add Markdown & LaTeX notes, and rotate, delete or split pages in any PDF. Private: nothing leaves your computer.
+> Highlight, draw, add text with LaTeX and Markdown notes, and rotate, delete or split pages in any PDF. Private: nothing is uploaded.
 
 **Category:** Productivity → Tools (or Workflow & Planning)
 
@@ -26,7 +26,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 
 **Marquee promo tile** (1400×560): `store/promo-marquee-1400x560.png`
 
-**Promo video:** the store takes a YouTube link. Upload `store/inkfold-promo.mp4` (31 s, 1280×720, no sound) to YouTube as Public or Unlisted, and paste its URL.
+**Promo video:** the store takes a YouTube link. Upload `store/inkfold-promo.mp4` (36 s, 1280×720, no sound) to YouTube as Public or Unlisted, and paste its URL.
 
 **Store icon** (128×128): `extension/icons/128.png`
 
@@ -64,7 +64,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 
 ```
 To test: open any PDF link on the web (for example the PDF of any arXiv paper). It opens in Inkfold.
-• Press H and drag across text to highlight it; R or O and drag to draw a shape.
+• Press H and drag across text to highlight it; R or O and drag to draw a shape; T and click to type a text box (LaTeX between $ signs works).
 • Copy any Markdown text, then press N to add a note page. A dialog explains this the first time.
 • Right-click a page to rotate or delete it; press P to work on ranges or split. Ctrl+S saves a new copy.
 Automatic opening can be turned off from the toolbar icon's right-click menu. No account or setup is needed.

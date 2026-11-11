@@ -17,6 +17,7 @@
 
 - **Highlighter** that follows the lines of real text, in any colour.
 - **Rectangles and ellipses** to mark up figures, tables or anything else. Move and resize them any time.
+- **Text boxes** with **LaTeX**: press <kbd>T</kbd>, click and type. Put math between `$` signs (`$\frac{a}{b}$`) and it's typeset as you finish. Pick any colour and size; the font is Helvetica, so the box looks the same in every PDF viewer.
 - **Markdown notes**: copy Markdown, press <kbd>N</kbd>, and a new page with your formatted note appears after the current one. Headings, lists, checkboxes, tables, code, quotes and links all work.
 - **LaTeX math** in notes: `$inline$`, `$$display$$`, `\(…\)`, `\[…\]` and `align`-style environments, drawn as sharp vector shapes.
 - **Page tools**: right-click a page to rotate or delete it, or work on ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
@@ -51,7 +52,8 @@ Coming soon.
 |---|---|
 | Open a PDF | Open any PDF link in Chrome, click the Inkfold toolbar icon on a PDF tab, or, on Inkfold's start page, drop a file or press <kbd>Ctrl</kbd>+<kbd>O</kbd>. (Once a PDF is open, Open is hidden: open another PDF in its own tab.) |
 | Highlight | Press <kbd>H</kbd> and drag across text. Or select text first, then press <kbd>H</kbd>. |
-| Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Colour with <kbd>C</kbd>, thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>. |
+| Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Colour with <kbd>C</kbd>, thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
+| Write | <kbd>T</kbd>, then click where the text should go and type. <kbd>Enter</kbd> starts a new line; <kbd>Esc</kbd> or a click outside finishes. `$…$` is LaTeX. Text size with <kbd>−</kbd> / <kbd>+</kbd>. To change a box later, double-click it (or click it with <kbd>T</kbd>); drag it to move it. |
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, click the bin at its corner or press <kbd>Del</kbd>. |
 | Add a note | Copy Markdown, then press <kbd>N</kbd> (or **+ Note**). It's added after the page under your pointer. |
 | Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
@@ -66,9 +68,11 @@ Coming soon.
 | <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
 | <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
 | <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |
+| <kbd>T</kbd> | Text box | | |
 | <kbd>C</kbd> | Colour | <kbd>J</kbd> / <kbd>K</kbd> | Next / previous page |
 | | | <kbd>G</kbd> | Go to page number |
 | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |
+| <kbd>−</kbd> / <kbd>+</kbd> | Smaller / larger text | | |
 | **Editing** | | **Pages** | |
 | <kbd>Ctrl</kbd> <kbd>Z</kbd> | Undo | <kbd>N</kbd> | Note from clipboard |
 | <kbd>Ctrl</kbd> <kbd>Y</kbd> | Redo | <kbd>[</kbd> / <kbd>]</kbd> | Rotate page left / right |
@@ -113,7 +117,7 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 
 - **Opening in place**: `content.js` runs on web pages and local files. When a page is a PDF, it swaps Chrome's built-in viewer for Inkfold's, in the same tab, and loads the viewer from the extension. The tab keeps the PDF's own address, so it stays an ordinary tab for features like Gemini in Chrome. Local PDFs are read through a hidden extension page (`offscreen.html`). Files you drop or pick with **Open** use the standalone `viewer.html` page.
 - **[pdf.js](https://mozilla.github.io/pdf.js/)** draws each page and its invisible, selectable text layer. Only pages near the screen are drawn, and Chrome skips work for pages out of view.
-- **Annotations** are kept in PDF coordinates and drawn as SVG over the page. On save they are written as standard `Highlight`, `Square` and `Circle` annotations, with their own appearance streams.
+- **Annotations** are kept in PDF coordinates and drawn as SVG over the page. On save they are written as standard `Highlight`, `Square`, `Circle` and `FreeText` annotations, with their own appearance streams.
 - **[pdf-lib](https://pdf-lib.js.org/)** writes the saved file. It edits the original document rather than copying pages out, so bookmarks, metadata and forms survive. Objects that only deleted pages used are removed, so deleted pages are really gone from the saved file.
 - **Notes** are laid out by a small Markdown renderer (`notes.js`) straight into PDF drawing commands, so their text stays selectable. **[MathJax](https://www.mathjax.org/)** turns LaTeX into SVG, which `math.js` converts into PDF vector paths. The TeX source is added as invisible text, so formulas can be copied and searched. MathJax is only loaded when a note contains math.
 
@@ -129,6 +133,7 @@ extension/          The extension itself (load this folder in Chrome)
   viewer.js         Viewer, annotations, page operations, saving and splitting
   notes.js          Markdown -> PDF pages
   math.js           LaTeX -> vector paths (via MathJax)
+  textbox.js        Text boxes: layout, on-screen SVG and PDF drawing
   icons/
   lib/              Bundled third-party libraries (see THIRD_PARTY_NOTICES.md)
 store/              Chrome Web Store screenshots and promo images

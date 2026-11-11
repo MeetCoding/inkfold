@@ -1,5 +1,6 @@
 import * as pdfjs from './lib/pdf.min.mjs';
 import { notePdf } from './notes.js';
+import { layout, cached, svgOf, pdfOps, SIZES, PAD } from './textbox.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -59,13 +60,15 @@ const store = {
 // Annotations are kept in PDF points and tied to an entry id, so they follow their page around:
 //   { page, type: 'rect'|'ellipse', x1, y1, x2, y2, color, width }   (box = centre line of the stroke)
 //   { page, type: 'highlight', rects: [[x1, y1, x2, y2], …], color }   (one box per line of text)
+//   { page, type: 'text', x1, y2, text, size, color }   (x1, y2 = top-left corner; the size comes from textbox.js)
 const docs = new Map();         // key -> { pdf, bytes, pages: [PDFPageProxy] }
 const views = new Map();        // entry id -> on-screen page
 let entries = [], pages = [], shapes = [], history = [], future = [], hovered = null, renderTimer, nextId = 1, loadId = 0, name;
 let tool = 'select', sel = null, drag = null, pick = null, dirty = false, msgTimer;
 let zoom = 1, fit = store.get('fit', 'auto'), spread = store.get('spread', false);
 let lineWidth = store.get('width', 2);
-const colors = store.get('colors', { shape: '#e5484d', highlight: '#ffd400' });
+const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}) };
+let textSize = store.get('textSize', 12), editing = null, lastPress = {};
 const snapshot = () => JSON.stringify({ entries, shapes });
 
 /* ---------- loading ---------- */
@@ -121,6 +124,10 @@ async function openPdf(buf, fileName) {
           page: e.id, type: a.subtype === 'Square' ? 'rect' : 'ellipse',
           x1: x1 + w / 2, y1: y1 + w / 2, x2: x2 - w / 2, y2: y2 - w / 2, color, width: w,
         });
+      } else if (a.subtype === 'FreeText') {
+        const [x1, , , y2] = a.rect, da = a.defaultAppearanceData ?? {};
+        const fc = da.fontColor?.length === 3 ? '#' + [...da.fontColor].map(v => v.toString(16).padStart(2, '0')).join('') : colors.text;
+        shapes.push({ page: e.id, type: 'text', x1, y1: y2, x2: x1, y2, text: a.contentsObj?.str ?? '', size: da.fontSize || 12, color: fc });
       } else continue;
       main.pdf.annotationStorage.setValue(a.id, { noView: true });
     }
@@ -516,6 +523,7 @@ function paint(p) {
       }
       return;
     }
+    if (s.type === 'text') return paintText(p, s, i, over);
     const v = view(p, [s.x1, s.y1, s.x2, s.y2]), w = s.width * p.vp.scale;
     const [tag, geo] = s.type === 'rect'
       ? ['rect', { x: v.x, y: v.y, width: v.w, height: v.h }]
@@ -535,12 +543,100 @@ function paint(p) {
   p.hl.replaceChildren(...under);
   p.svg.replaceChildren(...over);
   p.div.querySelector('.delsel')?.remove();
-  if (sel?.page === p.id && shapes.includes(sel)) p.div.append(deleteButton(p));
+  if (sel?.page === p.id && shapes.includes(sel) && sel !== editing?.s) p.div.append(deleteButton(p));
+  if (editing?.p === p) placeEditor();
+}
+
+/* ---------- text boxes ---------- */
+
+const ready = L => L && !(L instanceof Promise);
+// A text box's corners in PDF points, from its top-left corner and laid-out size.
+function boxOf(s) {
+  if (s.type !== 'text') return [s.x1, s.y1, s.x2, s.y2];
+  const L = cached(s.text, s.size), w = ready(L) ? L.w : 0, h = ready(L) ? L.h : 0;
+  return [s.x1, s.y2 - h, s.x1 + w, s.y2];
+}
+
+function paintText(p, s, i, over) {
+  if (s === editing?.s) return;   // the editor stands in for it
+  const L = layout(s.text, s.size);
+  if (!ready(L)) { L.then(() => paint(p), () => {}); return; }
+  const [ax, ay] = p.vp.convertToViewportPoint(s.x1, s.y2);
+  const g = el('g', { class: 'text', transform: `translate(${ax} ${ay}) rotate(${rotationOf(p)}) scale(${p.vp.scale})` });
+  g.innerHTML = svgOf(L, s.color);
+  over.push(g);
+  const v = view(p, boxOf(s));
+  over.push(el('rect', { class: 'hit thit', 'data-i': i, x: v.x, y: v.y, width: v.w, height: v.h }));
+  if (s === sel) over.push(el('rect', { class: 'outline', x: v.x - 2, y: v.y - 2, width: v.w + 4, height: v.h + 4 }));
+}
+
+// Typing into a text box: a plain text field over the box, showing the source ($…$ for math).
+function editText(p, s, fresh = false) {
+  finishEdit();
+  const before = snapshot();
+  if (fresh) shapes.push(s);
+  sel = s;
+  const ta = document.createElement('textarea');
+  ta.className = 'tedit';
+  ta.value = s.text;
+  ta.spellcheck = false;
+  ta.placeholder = 'Type here. $x^2$ for math';
+  ta.setAttribute('aria-label', 'Text box. Put LaTeX between $ signs, like $x^2$. Press Esc or click outside to finish.');
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.stopPropagation(); finishEdit(); }
+  });
+  ta.addEventListener('blur', () => finishEdit());
+  for (const ev of ['pointerdown', 'mousedown', 'dblclick']) ta.addEventListener(ev, e => e.stopPropagation());
+  editing = { p, s, before, ta };
+  p.div.append(ta);
+  syncControls();
+  paint(p);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+function placeEditor() {
+  const { p, s, ta } = editing, k = p.vp.scale, [ax, ay] = p.vp.convertToViewportPoint(s.x1, s.y2);
+  Object.assign(ta.style, {
+    left: ax + 'px', top: ay + 'px', fontSize: s.size * k + 'px', padding: PAD * k + 'px', color: s.color,
+    transform: `rotate(${rotationOf(p)}deg)`,
+  });
+}
+
+function finishEdit() {
+  if (!editing) return;
+  const { s, before, ta } = editing;
+  editing = null;
+  const text = ta.value.replace(/\s+$/, '');
+  ta.remove();
+  if (text.trim()) s.text = text;
+  else {   // an empty box is removed
+    const i = shapes.indexOf(s);
+    if (i >= 0) shapes.splice(i, 1);
+    if (sel === s) sel = null;
+  }
+  if (snapshot() !== before) commit(before);
+  syncControls();
+  repaint();
+}
+
+function setTextSize(step) {   // one size larger or smaller
+  const cur = sel?.type === 'text' ? sel.size : textSize;
+  const i = SIZES.findIndex(v => v >= cur);
+  const next = SIZES[clamp((i < 0 ? SIZES.length - 1 : SIZES[i] === cur ? i : step > 0 ? i - 1 : i) + step, 0, SIZES.length - 1)];
+  textSize = next;
+  store.set('textSize', next);
+  if (sel?.type === 'text' && sel.size !== next) {
+    if (!editing) commit(snapshot());
+    sel.size = next;
+    repaint();
+  }
+  syncControls();
 }
 
 // A small delete button just outside the selected annotation's top-right corner (inside it if there's no room).
 function deleteButton(p) {
-  const boxes = sel.type === 'highlight' ? sel.rects.map(r => view(p, r)) : [view(p, [sel.x1, sel.y1, sel.x2, sel.y2])];
+  const boxes = sel.type === 'highlight' ? sel.rects.map(r => view(p, r)) : [view(p, boxOf(sel))];
   const right = Math.max(...boxes.map(v => v.x + v.w)), top = Math.min(...boxes.map(v => v.y));
   const W = p.div.clientWidth, S = 26;
   const b = el2('button', { type: 'button', class: 'delsel', title: 'Delete this annotation (Del)', 'aria-label': 'Delete this annotation (Del)' });
@@ -573,9 +669,23 @@ function down(e, p) {
   if (t.dataset.h) {                                   // resize: the opposite corner stays put
     const v = view(p, [sel.x1, sel.y1, sel.x2, sel.y2]), k = 3 - t.dataset.h;
     drag = { anchor: p.vp.convertToPdfPoint(v.x + (k % 2) * v.w, v.y + (k >> 1) * v.h) };
-  } else if (tool === 'select' && t.dataset.i) {       // move
-    select(shapes[t.dataset.i]);
+  } else if (tool === 'select' && t.dataset.i) {       // move (a second quick press on a text box edits it)
+    const s = shapes[t.dataset.i];
+    if (s.type === 'text' && lastPress.s === s && e.timeStamp - lastPress.t < 450) {
+      e.preventDefault();
+      lastPress = {};
+      setTimeout(() => editText(p, s));
+      return;
+    }
+    lastPress = { s, t: e.timeStamp };
+    select(s);
     drag = { from: at, orig: { ...sel } };
+  } else if (tool === 'text') {                        // type into a box: an existing one, or a new one here
+    e.preventDefault();
+    const old = shapes[t.dataset.i];
+    const s = old?.type === 'text' ? old : { page: p.id, type: 'text', x1: at[0], y1: at[1], x2: at[0], y2: at[1], text: '', size: textSize, color: colors.text };
+    setTimeout(() => editText(p, s, s !== old));   // after this press has finished moving the focus
+    return;
   } else if (tool === 'rect' || tool === 'ellipse') {  // draw a new one
     sel = { page: p.id, type: tool, x1: at[0], y1: at[1], x2: at[0], y2: at[1], color: colors.shape, width: lineWidth };
     shapes.push(sel);
@@ -690,26 +800,32 @@ function commit(before) {
   dirty = true;
 }
 
-const kind = () => ((sel ? sel.type : tool) === 'highlight' ? 'highlight' : 'shape');
+const kind = () => { const t = sel ? sel.type : tool; return t === 'highlight' || t === 'text' ? t : 'shape'; };
 
 function syncControls() {   // the colour and thickness boxes show the selection, or the defaults for the tool
   $('color').value = sel?.color ?? colors[kind()];
   $('swatchDot').style.background = $('color').value;
-  $('width').value = sel?.width ?? lineWidth;
-  $('width').disabled = kind() === 'highlight';
+  const w = sel?.width ?? lineWidth, k = kind();
+  for (const b of $('widths').querySelectorAll('button')) {
+    b.setAttribute('aria-checked', +b.dataset.w === w && k === 'shape');
+    b.disabled = k === 'highlight';
+  }
+  $('widths').hidden = k === 'text';
+  $('tsize').hidden = k !== 'text';
+  $('tsizeVal').textContent = (sel?.type === 'text' ? sel.size : textSize) + ' pt';
 }
 
 function restyle() {   // also sets the default for new annotations of that kind
-  const c = $('color').value, w = +$('width').value;
+  const c = $('color').value, w = +($('widths').querySelector('[aria-checked="true"]')?.dataset.w ?? lineWidth);
   $('swatchDot').style.background = c;
   colors[kind()] = c;
   if (kind() === 'shape') lineWidth = w;
   store.set('colors', colors);
   store.set('width', lineWidth);
   if (!sel) return;
-  commit(snapshot());
+  if (!editing) commit(snapshot());
   sel.color = c;
-  if (sel.type !== 'highlight') sel.width = w;
+  if (sel.type === 'rect' || sel.type === 'ellipse') sel.width = w;
   repaint();
 }
 
@@ -742,6 +858,7 @@ function redo() {
 }
 
 function setTool(t) {
+  finishEdit();
   tool = document.body.dataset.tool = t;
   for (const b of document.querySelectorAll('[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === t);
   if (t === 'highlight') highlightSelection();   // text already selected? highlight it straight away
@@ -751,6 +868,7 @@ function setTool(t) {
 /* ---------- saving ---------- */
 
 async function save() {
+  finishEdit();
   if (!docs.has('main')) return;
   const suggestedName = name.replace(/\.pdf$/i, '') + '-annotated.pdf';
   let handle = null;
@@ -792,7 +910,8 @@ function download(data, file) {
 // It edits the original file rather than copying pages out, so bookmarks, metadata and forms survive;
 // anything only the dropped pages used is then removed, so deleted pages really are gone from the file.
 async function build(list) {
-  const { PDFDocument, PDFName, PDFNumber, PDFString, PDFHexString, PDFDict, PDFArray, PDFRef, PDFStream } = await lib();
+  const { PDFDocument, PDFName, PDFNumber, PDFString, PDFHexString, PDFDict, PDFArray, PDFRef, PDFStream, StandardFonts } = await lib();
+  let helv = null;   // Helvetica, added only if there are text boxes
   const doc = await PDFDocument.load(docs.get('main').bytes, { updateMetadata: false });
   const ctx = doc.context, N = PDFName.of;
   const round = v => +v.toFixed(2), num = (...v) => v.map(round).join(' ');
@@ -824,7 +943,7 @@ async function build(list) {
       if (!(d instanceof PDFDict)) continue;
       const author = d.lookup(N('T')), kind = d.lookup(N('Subtype'));
       if (!(author instanceof PDFString || author instanceof PDFHexString) || !MARKS.includes(author.decodeText())) continue;
-      if ([N('Square'), N('Circle'), N('Highlight')].includes(kind)) annots.remove(i);
+      if ([N('Square'), N('Circle'), N('Highlight'), N('FreeText')].includes(kind)) annots.remove(i);
     }
   }
 
@@ -834,8 +953,22 @@ async function build(list) {
     const pg = target.get(s.page);
     if (!pg) continue;
     const rgb = [1, 3, 5].map(i => +(parseInt(s.color.slice(i, i + 2), 16) / 255).toFixed(3));
-    let dict;
-    if (s.type === 'highlight') {
+    let dict, extra = { C: rgb };
+    if (s.type === 'text') {
+      // A FreeText annotation: the text as its contents, drawn by its own appearance (Helvetica plus math outlines).
+      // The leading and trailing no-op text objects tell readers (pdf.js included) the font size and colour.
+      const L = await layout(s.text, s.size), box = boxOf(s).map(round);
+      helv ??= await doc.embedFont(StandardFonts.Helvetica);
+      const mark = `BT /Helv ${s.size} Tf ${rgb.join(' ')} rg ET`;
+      const look = ctx.stream(`${mark}\n${pdfOps(L, s.x1, s.y2, rgb)}\n${mark}`, {
+        Type: 'XObject', Subtype: 'Form', BBox: box, Resources: { Font: { Helv: helv.ref } },
+      });
+      dict = {
+        Subtype: 'FreeText', Rect: box, Contents: PDFHexString.fromText(s.text),
+        DA: PDFString.of(`/Helv ${s.size} Tf ${rgb.join(' ')} rg`), BS: { W: 0 }, AP: { N: ctx.register(look) },
+      };
+      extra = {};   // (for FreeText, /C would be a background fill)
+    } else if (s.type === 'highlight') {
       const box = [
         Math.min(...s.rects.map(r => r[0])), Math.min(...s.rects.map(r => r[1])),
         Math.max(...s.rects.map(r => r[2])), Math.max(...s.rects.map(r => r[3])),
@@ -866,7 +999,7 @@ async function build(list) {
       const look = ctx.stream(`${w} w ${rgb.join(' ')} RG ${path} S`, { Type: 'XObject', Subtype: 'Form', BBox: box });
       dict = { Subtype: s.type === 'rect' ? 'Square' : 'Circle', Rect: box, BS: { W: w }, AP: { N: ctx.register(look) } };
     }
-    pg.node.addAnnot(ctx.register(ctx.obj({ Type: 'Annot', ...dict, C: rgb, F: 4, T: PDFString.of(MARK) })));
+    pg.node.addAnnot(ctx.register(ctx.obj({ Type: 'Annot', ...dict, ...extra, F: 4, T: PDFString.of(MARK) })));
   }
 
   // Swap in a fresh, flat page tree holding just these pages, in this order.
@@ -954,7 +1087,9 @@ async function openFile(f) {
 }
 
 function setWidth(w) {
-  $('width').value = w;
+  if (kind() !== 'shape') return;
+  lineWidth = w;
+  for (const b of $('widths').querySelectorAll('button')) b.setAttribute('aria-checked', +b.dataset.w === w);
   restyle();
 }
 
@@ -998,7 +1133,12 @@ function togglePanel(id, field) {
 const thisPage = () => (pages.length ? new Set([pages[targetIndex()].id]) : null);
 
 for (const b of document.querySelectorAll('[data-tool]')) b.onclick = () => setTool(b.dataset.tool);
-$('color').onchange = $('width').onchange = restyle;
+$('color').onchange = restyle;
+for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
+$('tsmaller').onclick = () => setTextSize(-1);
+$('tbigger').onclick = () => setTextSize(1);
+// The size buttons don't take focus, so a text box being typed in stays open.
+for (const id of ['tsmaller', 'tbigger']) $(id).addEventListener('mousedown', e => e.preventDefault());
 $('undo').onclick = undo;
 $('redo').onclick = redo;
 $('zin').onclick = () => step(1);
@@ -1106,7 +1246,8 @@ addEventListener('resize', () => {
 
 // Every shortcut, in one place. Keys listed in the buttons' labels and in the ? sheet.
 const KEYS = {
-  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'),
+  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'), 't': () => setTool('text'),
+  '-': () => setTextSize(-1), '=': () => setTextSize(1), '+': () => setTextSize(1),
   'c': () => ($('color').showPicker ? $('color').showPicker() : $('color').click()),
   '1': () => setWidth(1), '2': () => setWidth(2), '3': () => setWidth(4),
   'w': () => setZoom(fitZoom('width'), 'width'), 'f': () => setZoom(fitZoom('page'), 'page'),
@@ -1174,7 +1315,7 @@ async function welcome() {
   if (!fileAccess) {
     list.append(el2('li', {}, el2('strong', {}, 'PDFs on your computer: '), 'to open them straight from Chrome, turn on “Allow access to file URLs”. ', settingsBtn));
   }
-  await ask({ title: 'Welcome to Inkfold', body: [para('Highlight, draw, add notes, and rotate, delete or split pages, right in Chrome.'), list], ok: 'Get started', cancel: null });
+  await ask({ title: 'Welcome to Inkfold', body: [para('Highlight, draw, type text with LaTeX, add notes, and rotate, delete or split pages, right in Chrome.'), list], ok: 'Get started', cancel: null });
   store.set('welcomed', true);
 }
 if (!store.get('welcomed', false) || location.search.startsWith('?welcome')) welcome();
