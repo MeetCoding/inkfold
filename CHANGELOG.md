@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.0: magic paste
+
+- **Magic paste** (<kbd>Ctrl</kbd>+<kbd>V</kbd>, or the clipboard button in the toolbar) looks at what you copied and offers the right action in a small card with a preview: a **picture** is pasted onto the current page; **Markdown** (headings, lists, tables, code, links, math…) becomes a note page after it; **plain text** becomes a text box on it, wrapped to a comfortable width. For text, the other option is offered too. <kbd>Ctrl</kbd>+<kbd>V</kbd> inside text boxes and fields pastes as usual.
+- Toolbar buttons are a touch narrower, so everything still fits on one line in 1,280-px-wide windows.
+
 ## 2.4.0: images
 
 - **Add an image** (<kbd>I</kbd>, or the picture button in the toolbar): a dialog offers **Paste from the clipboard** (with a preview; unavailable when the clipboard holds no picture) or **Upload from your computer**. The image goes in the middle of the part of the page you're looking at, scaled down to fit the page if it's big.

@@ -26,6 +26,7 @@
 - **Compression**: the first time you open a PDF that could be more than 20% smaller (usually because of oversized images), a small card offers to compress it. Copies you save are then smaller; nothing else changes.
 - **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
 - **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
+- **Magic paste** (<kbd>Ctrl</kbd>+<kbd>V</kbd>, or the clipboard button): Inkfold looks at what you copied and offers the right thing: a picture goes onto the current page, Markdown becomes a note page after it, and plain text becomes a text box on it.
 - **Images** (<kbd>I</kbd>): paste a picture from the clipboard or upload one from your computer. It's placed on the page, scaled to fit, and can be moved, resized (keeping its proportions) and deleted like any other annotation.
 - **Eraser** (<kbd>E</kbd>): click or drag across highlights, shapes and text boxes to remove them.
 - **Undo and redo** for everything, including page changes.
@@ -63,6 +64,7 @@ Coming soon.
 | Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Pick one of five colours in the toolbar (<kbd>C</kbd> for the next), thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
 | Write | <kbd>T</kbd>, then click where the text should go and type. <kbd>Enter</kbd> starts a new line; <kbd>Esc</kbd> or a click outside finishes. `$…$` is LaTeX. Text size with <kbd>−</kbd> / <kbd>+</kbd>. To change a box later, double-click it (or click it with <kbd>T</kbd>); drag it to move it. |
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, press <kbd>Del</kbd>. |
+| Magic paste | Copy something, then press <kbd>Ctrl</kbd>+<kbd>V</kbd> (or the clipboard button). A small card shows what's on the clipboard and offers **Paste image on page N**, **Add as a note after page N** (Markdown) or **Add as a text box on page N** (plain text), with the other text option as an alternative. |
 | Add an image | <kbd>I</kbd> (or the picture button), then **Paste from the clipboard** (offered when it holds a picture) or **Upload from your computer**. Drag the image to move it and a corner to resize it (hold <kbd>Shift</kbd> to stretch it); <kbd>Del</kbd> or the eraser removes it. |
 | Erase | <kbd>E</kbd> for the eraser, then click a highlight, shape or text box to remove it, or drag across several at once. Whatever it would remove fades as you point at it; one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings back a whole stroke. |
 | Add a note | Press <kbd>N</kbd> (or **+ Note**), then type the note or choose **Use the clipboard** (offered when it holds text). <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. |
@@ -89,6 +91,7 @@ Coming soon.
 | <kbd>Ctrl</kbd> <kbd>Y</kbd> | Redo | <kbd>[</kbd> / <kbd>]</kbd> | Rotate page left / right |
 | <kbd>Del</kbd> | Delete annotation | <kbd>Shift</kbd> <kbd>Del</kbd> | Delete page |
 | <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages panel |
+| <kbd>Ctrl</kbd> <kbd>V</kbd> | Magic paste | | |
 | <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> | Open (start page only) / save as | <kbd>?</kbd> | Shortcut list |
 
 Page shortcuts act on the page under the pointer, or else the page filling the window. Inside the Pages panel's range box, <kbd>[</kbd> <kbd>]</kbd> and <kbd>Shift</kbd> <kbd>Del</kbd> act on the typed range instead.
@@ -112,7 +115,7 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 | Read and change data on all websites (`<all_urls>`) | A tiny script checks whether each page is a PDF; only if it is does Inkfold replace Chrome's PDF viewer in that tab. Other pages are never read or changed. It also lets Inkfold load the PDF you opened from whichever site it's on. |
 | `activeTab` | To open the PDF in the current tab when you click the toolbar icon. |
 | `offscreen` (OCR) | Text recognition for scanned pages runs in the same hidden extension page, in a worker, with the bundled Tesseract engine and English model. Page images never leave your computer. |
-| `clipboardRead` and `offscreen` | To offer the Markdown or picture you copied, read only when you open **Add a note** or **Add an image**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
+| `clipboardRead` and `offscreen` | To offer the Markdown, text or picture you copied, read only when you open **Add a note**, **Add an image** or **Magic paste**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
 | `contextMenus` | The right-click option on the toolbar icon to turn automatic opening on or off. |
 | `storage` | To remember your settings. |
 

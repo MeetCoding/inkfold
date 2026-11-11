@@ -144,3 +144,27 @@ export function pdfOps(L, X, Y, rgb) {
   }
   return ops.join('\n');
 }
+
+// Breaks text into lines no wider than maxW points (at this size, in Helvetica), at spaces where it can.
+// Existing line breaks are kept.
+export async function wrapText(text, size, maxW) {
+  const { f, set } = await font();
+  const clean = cleanWith(set), wOf = s => f.widthOfTextAtSize(clean(s), size);
+  const out = [];
+  for (const para of text.split('\n')) {
+    let line = '';
+    for (const word of para.split(/(?<=\s)/)) {   // words keep the space after them
+      if (line && wOf(line + word.trimEnd()) > maxW) { out.push(line.trimEnd()); line = ''; }
+      let w = word;
+      while (wOf(w.trimEnd()) > maxW && w.length > 1) {   // a single word too long for a line
+        let n = w.length - 1;
+        while (n > 1 && wOf(w.slice(0, n)) > maxW) n--;
+        out.push(w.slice(0, n));
+        w = w.slice(n);
+      }
+      line += w;
+    }
+    out.push(line.trimEnd());
+  }
+  return out.join('\n');
+}

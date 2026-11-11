@@ -1,6 +1,6 @@
 import * as pdfjs from './lib/pdf.min.mjs';
 import { notePdf } from './notes.js';
-import { layout, cached, svgOf, pdfOps, SIZES, PAD, cleanWith } from './textbox.js';
+import { layout, cached, svgOf, pdfOps, SIZES, PAD, cleanWith, wrapText } from './textbox.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -576,9 +576,9 @@ function deletePages(ids) {
   return done;
 }
 
-async function addNote(after = currentIndex()) {
+async function addNote(after = currentIndex(), given = null) {
   if (!pages.length) return;
-  const md = await noteSource(after);
+  const md = given ?? await noteSource(after);
   if (!md?.trim()) return;
   say('Adding note…', true);
   // As wide as the page it follows; as tall as the note needs.
@@ -897,6 +897,83 @@ function b64(bytes) {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
+}
+
+/* ---------- magic paste ---------- */
+
+// Markdown or just text? A couple of Markdown signs (a heading, a table, code, a checklist,
+// or several lighter ones like lists, bold and links) make it Markdown.
+function looksLikeMarkdown(t) {
+  let score = 0;
+  if (/^#{1,6}\s+\S/m.test(t)) score += 2;
+  if (/^```/m.test(t)) score += 2;
+  if (/^\s*\|.*\|\s*$/m.test(t) && /^\s*\|?\s*:?-{3,}/m.test(t)) score += 2;
+  if (/^\s*[-*+] \[[ xX]\]\s/m.test(t)) score += 2;
+  if (/^\s*([-*+]|\d+[.)])\s+\S/m.test(t) && t.includes('\n')) score += 1;
+  if (/\*\*[^*\n]+\*\*|__[^_\n]+__/.test(t)) score += 1;
+  if (/\[[^\]\n]+\]\([^)\s]+\)/.test(t)) score += 1;
+  if (/^>\s/m.test(t)) score += 1;
+  if (/\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\begin\{/.test(t)) score += 1;
+  return score >= 2;
+}
+
+// Looks at the clipboard and offers what fits: a picture goes on this page, Markdown becomes a note
+// after it, plain text becomes a text box on it.
+async function magicPaste() {
+  if (!pages.length) return;
+  const box = $('magic'), at = targetIndex(), p = pages[at];
+  if (box.matches(':popover-open')) return box.hidePopover();
+  box.replaceChildren(el2('p', { class: 'kind' }, 'Looking at your clipboard…'));
+  box.showPopover();
+  const r = $('magicBtn').getBoundingClientRect();
+  box.style.top = r.bottom + 8 + 'px';
+  box.style.left = Math.max(12, Math.min(r.left, innerWidth - box.offsetWidth - 12)) + 'px';
+  const [img, text] = await Promise.all([
+    chrome.runtime.sendMessage({ type: 'readClipboardImage' }).catch(() => null),
+    chrome.runtime.sendMessage({ type: 'readClipboard' }).catch(() => null),
+  ]);
+  const t = (text ?? '').replace(/\r\n?/g, '\n').replace(/^\n+|\s+$/g, '');
+  const md = !!t && looksLikeMarkdown(t);
+  const go = fn => () => { box.hidePopover(); fn(); };
+  const acts = [];
+  if (img) acts.push([`Paste image on page ${at + 1}`, go(() => placeImage(p, img))]);
+  if (t) {
+    const note = [`Add as a note after page ${at + 1}`, go(() => addNote(at, t))];
+    const tb = [`Add as a text box on page ${at + 1}`, go(() => pasteTextBox(p, t))];
+    acts.push(...(md ? [note, tb] : [tb, note]));
+  }
+  const kind = img ? 'A picture' : md ? 'Markdown' : t ? 'Text' : '';
+  if (!acts.length) {
+    box.replaceChildren(el2('h2', { id: 'magicTitle' }, 'Nothing to paste'),
+      el2('p', { class: 'kind' }, 'Your clipboard is empty. Copy a picture, some Markdown or some text, then try again.'));
+    return;
+  }
+  const preview = img ? Object.assign(el2('img', { alt: 'The picture on your clipboard' }), { src: img })
+    : el2('div', { class: 'snippet' }, t.slice(0, 400));
+  const buttons = acts.map(([label, fn], i) => { const b = el2('button', { type: 'button', class: i ? '' : 'primary' }, label); b.onclick = fn; return b; });
+  box.replaceChildren(
+    el2('h2', { id: 'magicTitle' }, 'Magic paste'),
+    el2('p', { class: 'kind' }, `${kind} on your clipboard${img && t ? ' (and some text)' : ''}`),
+    preview, el2('div', { class: 'acts' }, ...buttons));
+  buttons[0].focus();
+}
+
+// Plain text as a text box, wrapped to about 60% of the page's width, in the middle of what's in view.
+async function pasteTextBox(p, t) {
+  const [x0, y0, x1, y1] = p.page.view;
+  const text = await wrapText(t, textSize, (x1 - x0) * 0.6);
+  const L = await layout(text, textSize);
+  const r = p.div.getBoundingClientRect();
+  const sx = (Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2 - r.left;
+  const sy = (Math.max(r.top, 60) + Math.min(r.bottom, innerHeight)) / 2 - r.top;
+  let [cx, cy] = p.vp.convertToPdfPoint(sx, sy);
+  const left = clamp(cx - L.w / 2, x0, Math.max(x0, x1 - L.w)), top = clamp(cy + L.h / 2, Math.min(y1, y0 + L.h), y1);
+  commit(snapshot());
+  const s = { page: p.id, type: 'text', x1: left, y1: top, x2: left, y2: top, text, size: textSize, color: colors.text };
+  shapes.push(s);
+  setTool('select');
+  select(s);
+  say('Added the copied text as a text box. Drag it to move it; double-click it to edit.');
 }
 
 /* ---------- eraser ---------- */
@@ -1631,6 +1708,7 @@ const thisPage = () => (pages.length ? new Set([pages[targetIndex()].id]) : null
 for (const b of document.querySelectorAll('button[data-tool]')) b.onclick = () => setTool(b.dataset.tool);
 for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
 $('addImage').onclick = () => addImage();
+$('magicBtn').onclick = magicPaste;
 $('ocrStop').onclick = () => { ocrStop = true; showOcr(null); };
 $('tsmaller').onclick = () => setTextSize(-1);
 $('tbigger').onclick = () => setTextSize(1);
@@ -1790,7 +1868,7 @@ const KEYS = {
 };
 const CTRL_KEYS = {
   's': save, 'o': () => docs.has('main') || $('file').click(),   // with a PDF open, there's no opening another one here
-  'z': undo, 'y': redo,
+  'z': undo, 'y': redo, 'v': magicPaste,
   '=': () => step(1), '+': () => step(1), '-': () => step(-1), '0': () => setZoom(1),
 };
 
@@ -1808,7 +1886,7 @@ addEventListener('keydown', e => {
   if (e.altKey || e.isComposing) return;
   if (mod) {
     const fn = k === 'z' && e.shiftKey ? redo : CTRL_KEYS[k];
-    if (!fn || (typing && (k === 'z' || k === 'y'))) return;   // text boxes keep their own undo
+    if (!fn || (typing && (k === 'z' || k === 'y' || k === 'v'))) return;   // text fields keep their own undo and paste
     e.preventDefault();
     return fn();
   }

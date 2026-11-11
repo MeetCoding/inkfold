@@ -85,6 +85,9 @@
   </div>
   <span class="sep"></span>
   <div class="group">
+    <button id="magicBtn" title="Magic paste (Ctrl+V): adds what's on your clipboard as a picture, a note or a text box" aria-label="Magic paste (Ctrl+V)" aria-haspopup="dialog">
+      <svg viewBox="0 0 16 16"><path d="M5.5 2.5h-1A1.5 1.5 0 0 0 3 4v8.5A1.5 1.5 0 0 0 4.5 14h5M10.5 2.5h1A1.5 1.5 0 0 1 13 4v3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="5.5" y="1.5" width="5" height="2.4" rx=".8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M12.5 9.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="currentColor"/></svg>
+    </button>
     <button id="note" title="Add a note page after the current one: type it, or use the Markdown on your clipboard (N)">+ Note <span class="key">(N)</span></button>
     <button id="pagesBtn" title="Rotate, delete or split pages (P)">Pages <span class="key">(P)</span></button>
   </div>
@@ -123,12 +126,14 @@
   <div class="sk"></div>
 </div>
 
+<div id="magic" popover role="dialog" aria-labelledby="magicTitle"></div>
+
 <div id="keys" class="pop" popover aria-labelledby="keysTitle">
   <h2 id="keysTitle">Keyboard shortcuts</h2>
   <div class="cols">
     <dl>
       <dt>Tools</dt>
-      <dd><kbd>V</kbd> Select</dd><dd><kbd>H</kbd> Highlighter</dd><dd><kbd>R</kbd> Rectangle</dd><dd><kbd>O</kbd> Ellipse</dd><dd><kbd>T</kbd> Text box</dd><dd><kbd>E</kbd> Eraser</dd><dd><kbd>I</kbd> Add an image</dd>
+      <dd><kbd>V</kbd> Select</dd><dd><kbd>H</kbd> Highlighter</dd><dd><kbd>R</kbd> Rectangle</dd><dd><kbd>O</kbd> Ellipse</dd><dd><kbd>T</kbd> Text box</dd><dd><kbd>E</kbd> Eraser</dd><dd><kbd>I</kbd> Add an image</dd><dd><kbd>Ctrl V</kbd> Magic paste</dd>
       <dd><kbd>C</kbd> Next colour</dd><dd><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Thin, medium, thick</dd><dd><kbd>−</kbd> <kbd>+</kbd> Text size</dd>
       <dt>Editing</dt>
       <dd><kbd>Ctrl Z</kbd> Undo</dd><dd><kbd>Ctrl Y</kbd> Redo</dd><dd><kbd>Del</kbd> Delete annotation</dd><dd><kbd>Esc</kbd> Deselect</dd>

@@ -45,7 +45,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 | Permission | Justification |
 |---|---|
 | `activeTab` | When the user clicks the toolbar icon on a tab showing a PDF, the viewer opens that PDF. |
-| `clipboardRead` | Reads the clipboard only when the user explicitly opens "Add a note" (text) or "Add an image" (a picture), with a button or the N / I key. The dialog shows what was copied and lets the user choose it, or type a note / upload a file instead; nothing is used unless they confirm. |
+| `clipboardRead` | Reads the clipboard only when the user explicitly opens "Add a note" (text), "Add an image" (a picture) or "Magic paste" (either), with a button or the N / I / Ctrl+V key. The dialog shows what was copied and lets the user choose it, or type a note / upload a file instead; nothing is used unless they confirm. |
 | `offscreen` | One offscreen document (reasons `CLIPBOARD`, `BLOBS` and `WORKERS`) does three things a PDF tab can't do itself: reads the clipboard when the user opens "Add a note" (reading it from a web PDF's tab would prompt on behalf of that website); reads the bytes of a local `file://` PDF the user opened (a file:// page can't read its own file); and runs the bundled Tesseract OCR engine in a worker, to recognise text on scanned pages of the PDF the user opened. Nothing is sent anywhere. |
 | `contextMenus` | A checkbox on the toolbar icon's right-click menu to turn automatic PDF opening on or off. |
 | `storage` | Remembers the automatic-opening setting. |
