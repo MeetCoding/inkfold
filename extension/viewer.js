@@ -144,10 +144,20 @@ function fetchBytes(src) {   // XHR rather than fetch, because fetch cannot read
   });
 }
 
+// A local PDF opened in its own tab: the page can't read its own file, so the extension reads it.
+async function localBytes(src) {
+  try { return await fetchBytes(src); } catch {}
+  const b64 = await chrome.runtime.sendMessage({ type: 'readFile', url: src });
+  if (!b64) throw new Error('unreadable');
+  const bin = atob(b64), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
 async function openUrl(src) {
   try {
     const file = decodeURIComponent(new URL(src).pathname.split('/').pop()) || 'document.pdf';
-    await openPdf(await fetchBytes(src), file);
+    await openPdf(IN_PAGE && src.startsWith('file:') ? await localBytes(src) : await fetchBytes(src), file);
   } catch {
     fail(src.startsWith('file:')
       ? 'To open PDFs from your computer, turn on “Allow access to file URLs” for Inkfold in chrome://extensions. Or just drop the file here.'
@@ -912,7 +922,14 @@ const ICONS = {
   trash: '<svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
-const openFile = async f => f && openPdf(await f.arrayBuffer(), f.name);
+async function openFile(f) {
+  if (!f) return;
+  await openPdf(await f.arrayBuffer(), f.name);
+  // Files dropped or picked here live on the extension's page, which Gemini in Chrome can't read.
+  if (!IN_PAGE && docs.has('main') && firstTime('tip-gemini')) {
+    say('Tip: Gemini in Chrome can’t read files opened here. To use it, open the PDF straight in Chrome instead (drag it onto the tab bar).', { long: true });
+  }
+}
 
 function setWidth(w) {
   $('width').value = w;

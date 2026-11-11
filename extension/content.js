@@ -1,7 +1,7 @@
-// Runs on web pages. If the page is a PDF (and automatic opening is on, or the toolbar icon is clicked),
+// Runs on web pages and local files. If the page is a PDF (and automatic opening is on, or the toolbar icon is clicked),
 // it replaces Chrome's built-in PDF viewer with Inkfold in the same tab. Other pages are left alone.
 (() => {
-  if (window.top !== window || document.contentType !== 'application/pdf' || !/^https?:$/.test(location.protocol)) return;
+  if (window.top !== window || document.contentType !== 'application/pdf' || !/^(https?|file):$/.test(location.protocol)) return;
 
   let started = false;
   async function start() {

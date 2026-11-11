@@ -24,9 +24,8 @@ Inkfold makes no network requests other than loading the PDF you chose to open. 
 Inkfold asks for permissions only to do the job described above:
 
 - **Access to all websites**: a small script checks whether a page is a PDF. Only if it is does Inkfold replace Chrome's built-in PDF viewer in that tab. It also lets Inkfold load the PDF from whichever site it's on. Inkfold never reads or changes ordinary web pages.
-- **webNavigation**: to detect when you open a PDF file from your computer and show it in Inkfold.
 - **activeTab**: to open the PDF in your current tab when you click the toolbar icon.
-- **clipboardRead** and **offscreen**: to read the text you copied, only when you add a note. The extension reads it in a hidden page of its own, so no website is involved.
+- **clipboardRead** and **offscreen**: to read the text you copied, only when you add a note, and to read a PDF file from your computer when you open it in Chrome. Both happen in a hidden page of the extension's own, on your device.
 - **contextMenus** and **storage**: for the option to turn automatic opening on or off, and to remember that setting.
 
 ## Data sharing and sale

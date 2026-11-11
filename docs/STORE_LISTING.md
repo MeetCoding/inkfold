@@ -78,13 +78,12 @@ Good to know
 
 | Permission | Justification |
 |---|---|
-| `webNavigation` | Detects top-frame navigations to local `file://…pdf` URLs and opens them in the extension's viewer page (a page can't re-read its own local file, so these can't be opened in place). No browsing data is stored or sent. |
 | `activeTab` | When the user clicks the toolbar icon on a tab showing a PDF, the viewer opens that PDF. |
 | `clipboardRead` | Reads clipboard text only when the user explicitly adds a note (button or N key), to turn their Markdown into a note page. The first time, a dialog shows exactly what will be used. |
-| `offscreen` | The clipboard is read in an offscreen document (reason `CLIPBOARD`), because the viewer may be running inside a web PDF's tab, where reading it directly would prompt on behalf of that website. Used only when the user adds a note. |
+| `offscreen` | One offscreen document (reasons `CLIPBOARD` and `BLOBS`) does two things a PDF tab can't do itself: reads the clipboard when the user adds a note (reading it from a web PDF's tab would prompt on behalf of that website), and reads the bytes of a local `file://` PDF the user opened (a file:// page can't read its own file). Nothing is sent anywhere. |
 | `contextMenus` | A checkbox on the toolbar icon's right-click menu to turn automatic PDF opening on or off. |
 | `storage` | Remembers the automatic-opening setting. |
-| Host permission `<all_urls>` and content script on `http(s)://*/*` | PDFs can be hosted on any site. The content script only checks `document.contentType`; on ordinary web pages it does nothing else. When the page is a PDF (and the user has automatic opening on, or clicks the toolbar icon), it replaces Chrome's built-in PDF viewer with Inkfold's viewer in the same tab and re-reads the PDF from its URL. Web pages are never read or modified. |
+| Host permission `<all_urls>` and content script on `http(s)://*/*` and `file:///*` | PDFs can be hosted on any site. The content script only checks `document.contentType`; on ordinary web pages it does nothing else. When the page is a PDF (and the user has automatic opening on, or clicks the toolbar icon), it replaces Chrome's built-in PDF viewer with Inkfold's viewer in the same tab and re-reads the PDF from its URL. Web pages are never read or modified. |
 
 **Are you using remote code?** No. All JavaScript, including pdf.js, pdf-lib and MathJax, is bundled in the package. (In PDF tabs, the pdf.js worker is started from a blob copy of the bundled `lib/pdf.worker.min.mjs`, because pages can't start workers from extension URLs. The code is the same bundled file.) The only `eval`-like code in MathJax runs only under Node.js and is never reached in the browser.
 

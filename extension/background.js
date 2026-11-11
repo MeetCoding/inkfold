@@ -1,6 +1,6 @@
 // Inkfold background service worker.
-// Web PDFs are taken over in their own tab by content.js (so the tab keeps its https:// address and
-// stays shareable with tools such as Gemini in Chrome). Local file:// PDFs open on the viewer page.
+// PDFs, on the web or on your computer, are taken over in their own tab by content.js, so the tab keeps
+// its https:// or file:// address and stays shareable with tools such as Gemini in Chrome.
 
 const VIEWER = chrome.runtime.getURL('viewer.html');
 const isAuto = async () => (await chrome.storage.local.get({ auto: true })).auto;
@@ -21,14 +21,9 @@ chrome.contextMenus.onClicked.addListener(info => {
   if (info.menuItemId === 'auto') setAuto(info.checked);
 });
 
-// PDFs on your computer (file:// links): a page can't re-read its own file, so these open on the viewer page.
-chrome.webNavigation.onBeforeNavigate.addListener(async d => {
-  if (d.frameId === 0 && await isAuto()) chrome.tabs.update(d.tabId, { url: VIEWER + '?src=' + d.url });
-}, { url: [{ schemes: ['file'], pathSuffix: '.pdf' }, { schemes: ['file'], pathSuffix: '.PDF' }] });
-
 // Toolbar click: annotate the PDF in this tab, or open the viewer page next to it.
 chrome.action.onClicked.addListener(async tab => {
-  if (/^https?:/.test(tab.url || '')) {
+  if (/^(https?|file):/.test(tab.url || '')) {
     const took = await chrome.tabs.sendMessage(tab.id, { type: 'inkfold:open' }).catch(() => false);
     if (took) return;
   }
@@ -40,15 +35,20 @@ chrome.action.onClicked.addListener(async tab => {
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === 'fileAccess') { chrome.extension.isAllowedFileSchemeAccess().then(reply); return true; }
   if (msg?.type === 'openSettings') { chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` }); return false; }
-  if (msg?.type === 'readClipboard') { readClipboard().then(reply, () => reply(null)); return true; }
+  if (msg?.type === 'readClipboard') { offscreen({ type: 'offscreen:readClipboard' }).then(reply, () => reply(null)); return true; }
+  if (msg?.type === 'readFile') { offscreen({ type: 'offscreen:readFile', url: msg.url }).then(reply, () => reply(null)); return true; }
   return false;
 });
 
-// Reading the clipboard from a PDF tab would make Chrome ask on behalf of that website, so the
-// extension reads it itself, in an offscreen document, only when the user adds a note.
-async function readClipboard() {
+// Two things a PDF tab can't do itself, done in a hidden extension page:
+// • read the clipboard (from a web page, Chrome would ask on behalf of that website), only when adding a note;
+// • read a local PDF's bytes (a file:// page can't read its own file), only for the PDF open in that tab.
+async function offscreen(msg) {
   if (!(await chrome.offscreen.hasDocument?.())) {
-    await chrome.offscreen.createDocument({ url: 'offscreen.html', reasons: ['CLIPBOARD'], justification: 'Read Markdown the user copied, when they add a note' });
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html', reasons: ['CLIPBOARD', 'BLOBS'],
+      justification: 'Read Markdown the user copied when they add a note, and read a local PDF the user opened',
+    });
   }
-  return chrome.runtime.sendMessage({ type: 'offscreen:readClipboard' });
+  return chrome.runtime.sendMessage(msg);
 }

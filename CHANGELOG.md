@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.0
+
+- PDFs on your computer now also open in Inkfold **inside their own tab**, keeping their `file://` address, so Gemini in Chrome can share them too. (Needs "Allow access to file URLs".)
+- Files dropped onto, or opened from, Inkfold's own page show a one-time tip explaining that Gemini can't read that page, and how to open the PDF so it can.
+- One fewer permission: `webNavigation` is no longer needed.
+
 ## 1.5.0
 
 - Web PDFs now open in Inkfold **inside their own tab**, keeping their `https://` address, instead of moving to an extension page. This lets Gemini in Chrome (and similar tools) read and share them; previously Gemini showed "Tab cannot be shared".
