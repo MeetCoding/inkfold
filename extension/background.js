@@ -38,20 +38,23 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === 'readClipboardImage') { offscreen({ type: 'offscreen:readClipboardImage' }).then(reply, () => reply(null)); return true; }
   if (msg?.type === 'readClipboard') { offscreen({ type: 'offscreen:readClipboard' }).then(reply, () => reply(null)); return true; }
   if (msg?.type === 'ocr') { offscreen({ type: 'offscreen:ocr', image: msg.image }).then(reply, e => reply({ error: String(e) })); return true; }
-  if (msg?.type === 'readFile') { offscreen({ type: 'offscreen:readFile', url: msg.url }).then(reply, () => reply(null)); return true; }
+  if (msg?.type === 'myTabFile') {   // reader.js asks for the local file open in its own tab, and gets only that
+    const url = sender.tab?.url ?? '';
+    reply(sender.frameId > 0 && sender.url === chrome.runtime.getURL('reader.html') && url.startsWith('file:') ? url : null);
+    return false;
+  }
   return false;
 });
 
 // Two things a PDF tab can't do itself, done in a hidden extension page:
 // • read the clipboard (from a web page, Chrome would ask on behalf of that website), only when the user opens "Add a note";
-// • read a local PDF's bytes (a file:// page can't read its own file), only for the PDF open in that tab;
 // • recognise text (OCR) in pages that have none, with the bundled Tesseract engine, in a worker of its own.
 let creating = null;   // requests arriving together share one creation
 async function offscreen(msg) {
   if (!(await chrome.offscreen.hasDocument?.())) {
     await (creating ??= chrome.offscreen.createDocument({
-      url: 'offscreen.html', reasons: ['CLIPBOARD', 'BLOBS', 'WORKERS'],
-      justification: 'Read what the user copied when they use Magic paste, read a local PDF the user opened, and recognise text in scanned pages on the device',
+      url: 'offscreen.html', reasons: ['CLIPBOARD', 'WORKERS'],
+      justification: 'Read what the user copied when they use Magic paste, and recognise text in scanned pages on the device',
     }).catch(() => {}).finally(() => { creating = null; }));
   }
   return chrome.runtime.sendMessage(msg);

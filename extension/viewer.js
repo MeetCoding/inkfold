@@ -6,35 +6,13 @@ import { layout, cached, svgOf, pdfOps, SIZES, PAD, cleanWith, wrapText } from '
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
 const EXT = new URL('./', import.meta.url).href;
 const IN_PAGE = location.protocol !== 'chrome-extension:';
-await startWorker();
-
-async function startWorker() {
-  const src = EXT + 'lib/pdf.worker.min.mjs';
-  pdfjs.GlobalWorkerOptions.workerSrc = src;
-  if (!IN_PAGE) return;
-  // A page can't start a worker from the extension's address, but it can from a copy of the script.
-  // Local files (file://) have an opaque origin, where Chrome refuses module workers made from a copy;
-  // there the same code runs as a classic worker, with its one export and its import.meta removed.
-  // Without any worker pdf.js would read PDFs on the page's main thread ("Setting up fake worker").
-  try {
-    const code = await (await fetch(src)).text();
-    const classic = code.replace(/export\s*\{\s*WorkerMessageHandler\s*\}\s*;?\s*$/, '').replaceAll('import.meta.url', JSON.stringify(src));
-    const w = await tryWorker(code, { type: 'module' }) ?? await tryWorker(classic, {});
-    if (w) pdfjs.GlobalWorkerOptions.workerPort = w;
-  } catch {}
-}
-
-async function tryWorker(code, opts) {   // the worker, once it has started without a script error; else null
-  const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
-  let w;
-  try { w = new Worker(url, opts); } catch { return null; }
-  const ok = await Promise.race([
-    new Promise(r => setTimeout(() => r(true), 600)),
-    new Promise(r => w.addEventListener('error', () => r(false), { once: true })),
-  ]);
-  if (!ok) w.terminate();
-  return ok ? w : null;
-}
+// pdf.js reads PDFs in a worker. In a PDF's own tab, content.js has already started one (a page can't start a
+// worker from the extension's address); on the extension's own page pdf.js starts it from the file.
+pdfjs.GlobalWorkerOptions.workerSrc = EXT + 'lib/pdf.worker.min.mjs';
+const workerReady = (async () => {
+  const w = IN_PAGE ? await globalThis.inkfoldEarly?.worker : null;
+  if (w) pdfjs.GlobalWorkerOptions.workerPort = w;
+})();
 
 const MARK = 'Inkfold';         // author tag on the annotations we write, so we can re-edit them later
 const MARKS = [MARK, 'PDF Shapes'];   // also recognise files saved by the earlier name
@@ -83,26 +61,40 @@ const snapshot = () => JSON.stringify({ entries, shapes });
 
 /* ---------- loading ---------- */
 
-async function loadDoc(key, data) {
-  const pdf = await pdfjs.getDocument({ data: data.slice(), ...PDFJS_OPTS }).promise;   // pdf.js takes ownership of its copy
-  const list = [];
-  for (let n = 1; n <= pdf.numPages; n++) list.push(await pdf.getPage(n));
-  const doc = { pdf, bytes: data, pages: list };
+// src: the PDF's bytes, or { url } for a PDF on the web. A web PDF is read in pieces as they're needed (where the
+// server allows it), so its first page shows long before a large file has finished downloading; the rest keeps
+// coming in the background, and doc.data gives the whole file once it's all there (for saving, for instance).
+async function loadDoc(key, src) {
+  await workerReady;
+  // The bytes are handed over to pdf.js rather than copied, so a big file isn't held twice; when the whole file is
+  // needed again (saving, splitting, compressing), pdf.js hands back a copy.
+  const params = src.url ? { url: src.url, withCredentials: true, rangeChunkSize: 64 * 1024, disableStream: true, disableAutoFetch: true } : { data: src };
+  const pdf = await pdfjs.getDocument({ ...params, ...PDFJS_OPTS }).promise;
+  const list = await Promise.all(Array.from({ length: pdf.numPages }, (_, n) => pdf.getPage(n + 1)));
+  const doc = { pdf, bytes: null, pages: list };   // bytes: only once replaced by a compressed version
   docs.set(key, doc);
   return doc;
 }
+// The whole file, as a promise of a fresh copy (for a web PDF, asking for it fetches whatever hasn't arrived yet).
+const bytesOf = async doc => doc.bytes ?? doc.pdf.getData();
+let painted = null;   // resolves once the first page of the newly opened PDF is on screen
 
 async function openPdf(buf, fileName) {
   if (dirty && !confirm('Discard the unsaved changes to the current PDF?')) return;
-  const data = new Uint8Array(buf);
+  const src = buf.url ? buf : new Uint8Array(buf);
   const id = ++loadId;
   const old = [...docs.values()];
-  let main;
+  let main, err;
   try {
-    main = await loadDoc('main', data);
-  } catch (e) {
-    return fail(e.name === 'PasswordException' ? 'Password-protected PDFs are not supported.' : 'That could not be read as a PDF.');
+    main = await loadDoc('main', src);
+  } catch (e) { err = e; }
+  if (!main && src.url && err?.name !== 'PasswordException') {   // the server wouldn't serve it in pieces: read it whole
+    try { main = await loadDoc('main', new Uint8Array(await fetchBytes(src.url))); } catch (e) { err = e; }
   }
+  if (!main) return fail(err?.name === 'PasswordException' ? 'Password-protected PDFs are not supported.' : 'That could not be read as a PDF.');
+  let onPaint;
+  painted = new Promise(r => (onPaint = r));
+  painted.done = () => { painted.isDone = true; onPaint(); };
   if (id !== loadId) return;
   // Free the documents being replaced. (pdf.js 6 documents have no destroy(); their loading task does.)
   for (const d of old) if (d.pdf !== main.pdf) d.pdf.loadingTask?.destroy().catch(() => {});
@@ -125,11 +117,12 @@ async function openPdf(buf, fileName) {
 
   const stamps = [];   // images Inkfold saved, read back below
   imgs.clear();
-  for (const [i, page] of main.pages.entries()) {
+  const annots = await Promise.all(main.pages.map(page => page.getAnnotations().catch(() => [])));
+  for (const [i] of main.pages.entries()) {
     const e = { id: nextId++, doc: 'main', i, rot: 0 };
     entries.push(e);
     // Annotations saved by an earlier session become editable again; pdf.js is told not to paint them.
-    for (const a of await page.getAnnotations()) {
+    for (const a of annots[i]) {
       if (!MARKS.includes(a.titleObj?.str)) continue;
       const color = '#' + [...(a.color || [0, 0, 0])].map(v => v.toString(16).padStart(2, '0')).join('');
       if (a.subtype === 'Highlight' && a.quadPoints) {
@@ -154,14 +147,21 @@ async function openPdf(buf, fileName) {
       main.pdf.annotationStorage.setValue(a.id, { noView: true });
     }
   }
-  if (stamps.length) await readStamps(main.bytes, stamps);
+  if (stamps.length) await readStamps(await bytesOf(main), stamps);
+  if (id !== loadId) return;
   layoutPages();
-  setZoom(fitZoom(fit ?? 'auto'), fit);
-  scrollTo(0, 0);
+  const back = restorePlace(main);
+  if (back === false) {
+    setZoom(fitZoom(fit ?? 'auto'), fit);
+    scrollTo(0, 0);
+  }
   say(info.EncryptFilterName ? 'This PDF is encrypted: you can annotate it, but it cannot be saved.' : '', true);
+  if (back > 1 && !info.EncryptFilterName) say(`Back where you left off, on page ${back}.`, { action: { label: 'Go to page 1', fn: () => jumpTo(0) } });
 
-  // In the background: offer to compress a PDF that's much bigger than it needs to be (once per file),
-  // and recognise the text on pages that have none, such as scans.
+  // In the background, once the first page is on screen (so none of this slows it down): offer to compress a PDF
+  // that's much bigger than it needs to be (once per file), and recognise the text on pages that have none, such as scans.
+  await Promise.race([painted, new Promise(r => setTimeout(r, 1500))]);
+  if (id !== loadId) return;
   checkCompression(id, !!info.EncryptFilterName);
   autoOcr(id);
 
@@ -191,20 +191,15 @@ function fetchBytes(src) {   // XHR rather than fetch, because fetch cannot read
   });
 }
 
-// A local PDF opened in its own tab: the page can't read its own file, so the extension reads it.
-async function localBytes(src) {   // (reading it directly would only fail, with a CORS error in the console)
-  const b64 = await chrome.runtime.sendMessage({ type: 'readFile', url: src });
-  if (!b64) throw new Error('unreadable');
-  const bin = atob(b64), out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out.buffer;
-}
-
 async function openUrl(src) {
   try {
     const file = decodeURIComponent(new URL(src).pathname.split('/').pop()) || 'document.pdf';
     srcUrl = src;
-    await openPdf(IN_PAGE && src.startsWith('file:') ? await localBytes(src) : await fetchBytes(src), file);
+    let source;
+    if (!src.startsWith('file:')) source = { url: src };   // read in pieces, first page first
+    else if (IN_PAGE) source = await (globalThis.inkfoldEarly?.bytes ?? Promise.reject());   // read by content.js, as the tab opened
+    else source = await fetchBytes(src);
+    await openPdf(source, file);
   } catch {
     fail(src.startsWith('file:')
       ? 'To open PDFs from your computer, turn on “Allow access to file URLs” for Inkfold in chrome://extensions. Or just drop the file here.'
@@ -218,7 +213,12 @@ const io = new IntersectionObserver(list => {
   for (const e of list) {
     const p = e.target.p;
     p.visible = e.isIntersecting;
-    if (p.visible) { render(p); textLayer(p); } else unrender(p);
+    if (!p.visible) { unrender(p); continue; }
+    // Until the first page is on screen, pages just outside the window wait, so they don't compete with it
+    // (for a web PDF, for the connection as well).
+    const onScreen = e.boundingClientRect.top < innerHeight && e.boundingClientRect.bottom > 0;
+    if (!onScreen && painted && !painted.isDone) painted.then(() => p.visible && (render(p), textLayer(p)));
+    else { render(p); textLayer(p); }
   }
 }, { rootMargin: '100% 0px' });
 
@@ -300,6 +300,7 @@ async function render(p) {
   if (p.task !== task) return;
   p.canvas?.remove();
   p.div.prepend(canvas);
+  painted?.done();
   Object.assign(p, { canvas, task: null, at: key });
 }
 
@@ -482,13 +483,14 @@ function showZip(state) {
 }
 
 async function smallerCopy() {
-  return (await import('./compress.js')).compressPdf(docs.get('main').bytes);
+  return (await import('./compress.js')).compressPdf(await bytesOf(docs.get('main')));
 }
 
-function applyCompression(id, smaller) {
+async function applyCompression(id, smaller) {
   const main = docs.get('main');
   if (id !== loadId) return;
-  const before = main.bytes.length;
+  const before = main.bytes?.length ?? (await main.pdf.getDownloadInfo()).length;
+  if (id !== loadId) return;
   main.bytes = smaller;
   dirty = true;
   showZip({ phase: 'done', before, after: smaller.length });
@@ -497,17 +499,21 @@ function applyCompression(id, smaller) {
 
 async function checkCompression(id, encrypted) {
   const main = docs.get('main'), fp = main.pdf.fingerprints?.[0];
+  let size;
+  try { size = (await main.pdf.getDownloadInfo()).length; } catch {}
+  if (id !== loadId) return;
+  if (!size) return showZip({ phase: 'failed' });
   if (encrypted) return showZip({ phase: 'locked' });
-  if (main.bytes.length < 100_000) return showZip({ phase: 'small' });
+  if (size < 100_000) return showZip({ phase: 'small' });
   const known = store.get('compressInfo', {})[fp];
-  const show = after => showZip({ phase: 1 - after / main.bytes.length > 0.05 ? 'ready' : 'compact', before: main.bytes.length, after });
-  if (known && known[0] === main.bytes.length) return show(known[1]);
+  const show = after => showZip({ phase: 1 - after / size > 0.05 ? 'ready' : 'compact', before: size, after });
+  if (known && known[0] === size) return show(known[1]);
   await new Promise(r => setTimeout(r, 1500));   // let the first pages draw first
   if (id !== loadId) return;
   let smaller;
   try { smaller = await smallerCopy(); } catch { return id === loadId && showZip({ phase: 'failed' }); }
   if (id !== loadId) return;
-  const before = main.bytes.length, after = smaller.length, saved = 1 - after / before;
+  const before = size, after = smaller.length, saved = 1 - after / before;
   if (fp) {
     const info = store.get('compressInfo', {});
     delete info[fp];
@@ -777,7 +783,7 @@ function keepPlace(fn, toTop) {   // keep the same spot of the same page under t
 
 // mode: 'width' | 'page' | 'auto' keep fitting on resize; null is a fixed zoom.
 // While the window is being resized (lazy), pages are only re-rendered once it stops.
-function setZoom(z, mode = null, lazy = false) {
+function setZoom(z, mode = null, lazy = false, quiet = false) {   // quiet: this file's own zoom, not a new default
   if (!pages.length) return;
   keepPlace(() => {
     fit = mode;
@@ -785,9 +791,62 @@ function setZoom(z, mode = null, lazy = false) {
     pages.forEach(size);
   }, mode === 'page' && !lazy);
   settle(lazy ? 250 : 0);
-  store.set('fit', mode ?? 'auto');
+  if (!quiet) store.set('fit', mode ?? 'auto');
   syncZoomUi();
+  notePlace();
 }
+
+/* ---------- remembering where you were ---------- */
+
+// Each file (known by its fingerprint, so it's recognised wherever it's opened from) remembers the page you were on,
+// how far down it, and the zoom. Opening it again lands you there. The last 300 files are remembered, in the
+// extension's own storage on this computer. A link to a page (…pdf#page=12) still goes to that page.
+const PLACES = 300;
+let placeTimer = 0, placing = false;
+
+function notePlace() {
+  if (placing || !pages.length) return;
+  clearTimeout(placeTimer);
+  placeTimer = setTimeout(savePlace, 400);
+}
+
+function savePlace() {
+  clearTimeout(placeTimer);
+  const fp = docs.get('main')?.pdf.fingerprints?.[0];
+  if (!fp || !pages.length || placing) return;
+  const top = header.getBoundingClientRect().bottom;
+  const p = pages.find(p => p.div.getBoundingClientRect().bottom > top + 1) ?? pages[0];
+  const r = p.div.getBoundingClientRect();
+  const at = {
+    k: pages.indexOf(p), i: p.e.doc === 'main' ? p.e.i : null, frac: +clamp((top - r.top) / r.height, 0, 1).toFixed(4),
+    zoom: +zoom.toFixed(4), fit, t: Date.now(),
+  };
+  const all = store.get('places', {});
+  delete all[fp];
+  const keep = Object.entries(all).sort((a, b) => a[1].t - b[1].t).slice(-(PLACES - 1));
+  store.set('places', Object.fromEntries([...keep, [fp, at]]));
+}
+
+// -> the page number it went back to, or false when there's nothing to go back to.
+function restorePlace(main) {
+  const link = /(?:^#|&)page=(\d+)/.exec(location.hash);
+  const at = store.get('places', {})[main.pdf.fingerprints?.[0]];
+  if (!at && !link) return false;
+  placing = true;
+  try {
+    if (at) setZoom(at.fit ? fitZoom(at.fit) : at.zoom, at.fit ?? null, false, true);
+    else setZoom(fitZoom(fit ?? 'auto'), fit);
+    let k = link ? +link[1] - 1 : at.i != null ? pages.findIndex(p => p.e.doc === 'main' && p.e.i === at.i) : at.k;
+    if (k < 0 || k >= pages.length) k = clamp(link ? k : at.k, 0, pages.length - 1);
+    const frac = link ? 0 : at.frac;
+    const r = pages[k].div.getBoundingClientRect(), top = header.getBoundingClientRect().bottom;
+    scrollBy(0, r.top + frac * r.height - top - (frac ? 0 : GAP));
+    showPage(k);
+    return link ? 0 : k + 1;   // (no "welcome back" for a link to a page)
+  } finally { placing = false; }
+}
+addEventListener('pagehide', savePlace);
+document.addEventListener('visibilitychange', () => { if (document.hidden && placeTimer) savePlace(); });
 
 // The zoom control: − [ 125% ⌄ ] + in the toolbar, and a card with the fit modes, a dial and presets.
 const Z_MIN = 0.25, Z_MAX = 5, zToRange = z => Math.round(1000 * Math.log(z / Z_MIN) / Math.log(Z_MAX / Z_MIN));
@@ -1731,7 +1790,7 @@ async function build(list) {
   } = await lib();
   let helv = null;   // Helvetica, added only if there are text boxes
   const pics = new Map();   // image key -> the picture embedded in this file (once, however often it's used)
-  const doc = await PDFDocument.load(docs.get('main').bytes, { updateMetadata: false });
+  const doc = await PDFDocument.load(await bytesOf(docs.get('main')), { updateMetadata: false });
   const ctx = doc.context, N = PDFName.of;
   const round = v => +v.toFixed(2), num = (...v) => v.map(round).join(' ');
   const orig = doc.getPages();
@@ -1739,7 +1798,7 @@ async function build(list) {
   const copied = new Map();   // note pages, copied in from their own small PDFs
   for (const key of new Set(list.map(e => e.doc))) {
     if (key === 'main') continue;
-    const src = await PDFDocument.load(docs.get(key).bytes);
+    const src = await PDFDocument.load(await bytesOf(docs.get(key)));
     copied.set(key, await doc.copyPages(src, src.getPageIndices()));
   }
   const out = list.map(e => (e.doc === 'main' ? orig[e.i] : copied.get(e.doc)[e.i]));
@@ -1999,7 +2058,10 @@ function showPage(k = currentIndex()) {
   $('pageOf').textContent = `/ ${pages.length}`;
   if (document.activeElement !== $('pageNum')) $('pageNum').value = pages.length ? k + 1 : '';
 }
-addEventListener('scroll', () => { if (!pageTimer) pageTimer = requestAnimationFrame(() => { pageTimer = 0; showPage(); }); }, { passive: true });
+addEventListener('scroll', () => {
+  if (!pageTimer) pageTimer = requestAnimationFrame(() => { pageTimer = 0; showPage(); });
+  notePlace();
+}, { passive: true });
 $('pageNum').onkeydown = e => {
   if (e.key === 'Enter') {
     e.preventDefault();

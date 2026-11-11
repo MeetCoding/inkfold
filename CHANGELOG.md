@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.10.0: faster opening, large files, and back where you left off
+
+- **Opens about twice as fast.** Before, the viewer started the PDF reader's worker only once it was on screen, then waited a fixed 0.6 s to be sure it had started, and only then began reading the file. Now the worker, the reader and the file all start loading the moment the tab opens, and the worker is used as soon as it reports ready. A small PDF's first page shows in about 0.35 s instead of 0.9 s, and a 500-page PDF in about 0.5 s instead of 1.15 s (measured on the same machine).
+- **Large files on your computer open quickly, and very large ones open at all.** A local PDF used to be passed through the extension as text, which was slow (about 1 s for a 6 MB scan) and failed for files over roughly 48 MB (the message got too big). It's now read by a small extension page in a hidden frame of the PDF's own tab, which can only read that tab's file, and handed over without copying: the 6 MB scan shows in about 0.7 s instead of 2.3 s, and a 64 MB file in under 1 s.
+- **Large web PDFs show their first page before they've downloaded.** Inkfold reads web PDFs in pieces (where the server allows it), first page first. On a 4 Mbit/s connection a 64 MB scanned PDF shows its first page in about 11 s instead of more than 2 minutes, and a 500-page PDF in about 1.1 s instead of 3.3 s. Pages just outside the window wait until the first one is on screen, and text recognition, the compression check and building the text of every page start after that too.
+- **Uses less memory with big files**: the file is no longer kept twice (once for showing, once for saving); a copy is made only when you save, split or compress.
+- **Back where you left off.** Reopening a PDF goes to the same page, the same spot on it and the same zoom, with a "Go to page 1" button in the message. Remembered for your last 300 PDFs, by an anonymous fingerprint of the file, so it works wherever the file is opened from. Links to a page (`…pdf#page=12`) still open that page.
+- Low-resolution-first drawing for scans was tried and left out: drawing a scanned page is almost all decoding its picture, which takes the same time at any size (about 130 ms for a 300 dpi page), so a blurry first pass wouldn't have appeared any sooner.
+
 ## 2.9.0: find by page, a gear for pages and file, centred toolbar
 
 - **Find** (Ctrl+F, or the new magnifier button): type a word or phrase and get a list of the pages that mention it, each page once, with how many times and a snippet of the first match. Tab (or ↓) moves to the next page in the list and scrolls the PDF there; Shift+Tab (or ↑) goes back; Enter goes there and closes the list. Matches are lit up on the pages, brighter on the page in focus. Match case and Whole word options. Scanned pages are searched once their text is recognised, and your own text boxes are searched too.

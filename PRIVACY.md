@@ -1,6 +1,6 @@
 # Inkfold privacy policy
 
-_Last updated: 11 November 2026 (version 2.9.0)_
+_Last updated: 11 November 2026 (version 2.10.0)_
 
 Inkfold is a Chrome extension for annotating PDFs. It is built so that your documents stay on your computer.
 
@@ -17,7 +17,7 @@ Inkfold does not collect, store on any server, sell, or share any personal data.
 | **Clipboard text and pictures** | Read only when you use **Magic paste** (the clipboard button or <kbd>Ctrl</kbd>+<kbd>V</kbd>), so Inkfold can show what you copied and offer what to do with it; it's used only if you choose an option. | Stays in your browser. It is not stored or sent anywhere, except into copies you save if you add it. |
 | **Pictures you upload** | Read only when you pick one with **Add an image**, and placed on the page. | Stays in your browser, and goes only into copies you save. |
 | **Images of scanned pages** | When a PDF has pages without text, Inkfold renders those pages as images and recognises their text, in a hidden page of the extension, with the text-recognition engine bundled in the extension. | Stays in your browser. The recognised text is kept in memory, and written only into copies you save. |
-| **Settings** | Whether PDFs open in Inkfold automatically, your last colours and zoom, and which tips you have already seen. | Stored locally in Chrome's extension storage on your device. |
+| **Settings and reading places** | Whether PDFs open in Inkfold automatically, your last colours and zoom, which tips you have already seen, and, for each of your last 300 PDFs, the page and zoom you were at (kept under an anonymous fingerprint of the file, not its name or contents). | Stored locally in Chrome's extension storage on your device. |
 
 Inkfold makes no network requests other than loading the PDF you chose to open. All the libraries it uses (pdf.js, pdf-lib, MathJax, and the Tesseract text-recognition engine with its English language model) are bundled inside the extension. No code or data is loaded from the internet. Checking whether a PDF can be compressed, and compressing it, also happens entirely in your browser; Inkfold remembers only an anonymous fingerprint of PDFs it has already checked, so it asks just once.
 
@@ -27,8 +27,8 @@ Inkfold asks for permissions only to do the job described above:
 
 - **Access to all websites**: a small script checks whether a page is a PDF. Only if it is does Inkfold replace Chrome's built-in PDF viewer in that tab. It also lets Inkfold load the PDF from whichever site it's on. Inkfold never reads or changes ordinary web pages.
 - **activeTab**: to open the PDF in your current tab when you click the toolbar icon.
-- **clipboardRead** and **offscreen**: to read the text or picture you copied, only when you use **Magic paste**; to read a PDF file from your computer when you open it in Chrome; and to recognise text on scanned pages. All of this happens in a hidden page of the extension's own, on your device.
-- **contextMenus** and **storage**: for the option to turn automatic opening on or off, and to remember that setting.
+- **clipboardRead** and **offscreen**: to read the text or picture you copied, only when you use **Magic paste**, and to recognise text on scanned pages. Both happen in a hidden page of the extension's own, on your device. (A PDF you open from your computer is read by a small page of the extension inside that PDF's own tab, which can only read that one file.)
+- **contextMenus** and **storage**: for the option to turn automatic opening on or off, to remember your settings, and to remember where you were in each PDF.
 
 ## Data sharing and sale
 

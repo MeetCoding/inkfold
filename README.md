@@ -73,6 +73,7 @@ Coming soon.
 | Split | In the Pages and file panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
 | Zoom | − / + step through the presets. Click the percentage for a card with Fit width, Fit page, a zoom slider and preset buttons. |
 | File status | The gear button's panel shows text recognition progress (with Stop) and how much smaller the file could be, with a Compress button. |
+| Reopen | A PDF opens where you left it: same page, same spot, same zoom (remembered for your last 300 PDFs). A link to a page, such as `…pdf#page=12`, still opens that page. |
 | Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> opens Chrome's save dialog with the original file's name, so confirming Chrome's "replace" prompt writes over the original. Pick another name or folder to keep the original and save a copy. For a PDF opened straight from your computer, the dialog opens in that file's folder from the second save there on; for one picked with Open, it opens in that folder straight away (Chrome gives extensions no way to find the folder before that). |
 
 ### Keyboard shortcuts
@@ -118,9 +119,9 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 | Read and change data on all websites (`<all_urls>`) | A tiny script checks whether each page is a PDF; only if it is does Inkfold replace Chrome's PDF viewer in that tab. Other pages are never read or changed. It also lets Inkfold load the PDF you opened from whichever site it's on. |
 | `activeTab` | To open the PDF in the current tab when you click the toolbar icon. |
 | `offscreen` (OCR) | Text recognition for scanned pages runs in the same hidden extension page, in a worker, with the bundled Tesseract engine and English model. Page images never leave your computer. |
-| `clipboardRead` and `offscreen` | To offer the Markdown, text or picture you copied, read only when you use **Magic paste**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
+| `clipboardRead` and `offscreen` | To offer the Markdown, text or picture you copied, read only when you use **Magic paste**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. |
 | `contextMenus` | The right-click option on the toolbar icon to turn automatic opening on or off. |
-| `storage` | To remember your settings. |
+| `storage` | To remember your settings, and where you were in each PDF. |
 
 ## Limitations
 
@@ -134,7 +135,7 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 
 ## How it works
 
-- **Opening in place**: `content.js` runs on web pages and local files. When a page is a PDF, it swaps Chrome's built-in viewer for Inkfold's, in the same tab, and loads the viewer from the extension. The tab keeps the PDF's own address, so it stays an ordinary tab for features like Gemini in Chrome. Local PDFs are read through a hidden extension page (`offscreen.html`). Files you drop or pick with **Open** use the standalone `viewer.html` page.
+- **Opening in place**: `content.js` runs on web pages and local files. When a page is a PDF, it swaps Chrome's built-in viewer for Inkfold's, in the same tab, and loads the viewer from the extension. The tab keeps the PDF's own address, so it stays an ordinary tab for features like Gemini in Chrome. A local PDF is read by a small extension page in a hidden frame of its tab (`reader.html`, which reads only that tab's own file, because a `file://` page can't read its own file) and handed over without copying. The PDF reader's worker, the reader itself and the file all start loading at once, before the viewer is on screen. Web PDFs are read in pieces (HTTP range requests, where the server allows them), so the first page shows before a large file has downloaded. Files you drop or pick with **Open** use the standalone `viewer.html` page.
 - **[pdf.js](https://mozilla.github.io/pdf.js/)** draws each page and its invisible, selectable text layer. Only pages near the screen are drawn, and Chrome skips work for pages out of view.
 - **Annotations** are kept in PDF coordinates and drawn as SVG over the page. On save they are written as standard `Highlight`, `Square`, `Circle`, `FreeText` and `Stamp` (images) annotations, with their own appearance streams.
 - **[pdf-lib](https://pdf-lib.js.org/)** writes the saved file. It edits the original document rather than copying pages out, so bookmarks, metadata and forms survive. Objects that only deleted pages used are removed, so deleted pages are really gone from the saved file.
@@ -147,7 +148,8 @@ extension/          The extension itself (load this folder in Chrome)
   manifest.json
   background.js     Toolbar button, right-click menu, welcome on install
   content.js        Opens PDFs (web and local) in Inkfold, in their own tab
-  offscreen.*       Reads the clipboard for notes and local PDF files; runs text recognition (OCR)
+  reader.*          Reads a local PDF's own file for its tab (in a hidden frame)
+  offscreen.*       Reads the clipboard for Magic paste; runs text recognition (OCR)
   compress.js       Makes a smaller copy of a PDF (image re-encoding, stream compression)
   viewer.html/.css  The viewer UI
   viewer.js         Viewer, annotations, page operations, saving and splitting
