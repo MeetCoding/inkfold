@@ -26,6 +26,7 @@
 - **Compression**: the first time you open a PDF that could be more than 20% smaller (usually because of oversized images), a small card offers to compress it. Copies you save are then smaller; nothing else changes.
 - **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
 - **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
+- **Images** (<kbd>I</kbd>): paste a picture from the clipboard or upload one from your computer. It's placed on the page, scaled to fit, and can be moved, resized (keeping its proportions) and deleted like any other annotation.
 - **Eraser** (<kbd>E</kbd>): click or drag across highlights, shapes and text boxes to remove them.
 - **Undo and redo** for everything, including page changes.
 - **A keyboard shortcut for every action**, shown in brackets on every button. Press <kbd>?</kbd> for the full list.
@@ -62,6 +63,7 @@ Coming soon.
 | Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Pick one of five colours in the toolbar (<kbd>C</kbd> for the next), thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
 | Write | <kbd>T</kbd>, then click where the text should go and type. <kbd>Enter</kbd> starts a new line; <kbd>Esc</kbd> or a click outside finishes. `$…$` is LaTeX. Text size with <kbd>−</kbd> / <kbd>+</kbd>. To change a box later, double-click it (or click it with <kbd>T</kbd>); drag it to move it. |
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, press <kbd>Del</kbd>. |
+| Add an image | <kbd>I</kbd> (or the picture button), then **Paste from the clipboard** (offered when it holds a picture) or **Upload from your computer**. Drag the image to move it and a corner to resize it (hold <kbd>Shift</kbd> to stretch it); <kbd>Del</kbd> or the eraser removes it. |
 | Erase | <kbd>E</kbd> for the eraser, then click a highlight, shape or text box to remove it, or drag across several at once. Whatever it would remove fades as you point at it; one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings back a whole stroke. |
 | Add a note | Press <kbd>N</kbd> (or **+ Note**), then type the note or choose **Use the clipboard** (offered when it holds text). <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. |
 | Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
@@ -76,7 +78,7 @@ Coming soon.
 | <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
 | <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
 | <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |
-| <kbd>T</kbd> / <kbd>E</kbd> | Text box / eraser |
+| <kbd>T</kbd> / <kbd>E</kbd> / <kbd>I</kbd> | Text box / eraser / add an image |
 | | | <kbd>↑</kbd> / <kbd>↓</kbd> | Smooth scrolling (hold to go faster) | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
 | <kbd>C</kbd> | Next colour | <kbd>→</kbd> / <kbd>←</kbd> (or <kbd>J</kbd> / <kbd>K</kbd>) | Next / previous page |
 | | | <kbd>G</kbd> | Go to page number |
@@ -110,7 +112,7 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 | Read and change data on all websites (`<all_urls>`) | A tiny script checks whether each page is a PDF; only if it is does Inkfold replace Chrome's PDF viewer in that tab. Other pages are never read or changed. It also lets Inkfold load the PDF you opened from whichever site it's on. |
 | `activeTab` | To open the PDF in the current tab when you click the toolbar icon. |
 | `offscreen` (OCR) | Text recognition for scanned pages runs in the same hidden extension page, in a worker, with the bundled Tesseract engine and English model. Page images never leave your computer. |
-| `clipboardRead` and `offscreen` | To offer the Markdown you copied, read only when you open **Add a note**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
+| `clipboardRead` and `offscreen` | To offer the Markdown or picture you copied, read only when you open **Add a note** or **Add an image**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
 | `contextMenus` | The right-click option on the toolbar icon to turn automatic opening on or off. |
 | `storage` | To remember your settings. |
 
@@ -128,7 +130,7 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 
 - **Opening in place**: `content.js` runs on web pages and local files. When a page is a PDF, it swaps Chrome's built-in viewer for Inkfold's, in the same tab, and loads the viewer from the extension. The tab keeps the PDF's own address, so it stays an ordinary tab for features like Gemini in Chrome. Local PDFs are read through a hidden extension page (`offscreen.html`). Files you drop or pick with **Open** use the standalone `viewer.html` page.
 - **[pdf.js](https://mozilla.github.io/pdf.js/)** draws each page and its invisible, selectable text layer. Only pages near the screen are drawn, and Chrome skips work for pages out of view.
-- **Annotations** are kept in PDF coordinates and drawn as SVG over the page. On save they are written as standard `Highlight`, `Square`, `Circle` and `FreeText` annotations, with their own appearance streams.
+- **Annotations** are kept in PDF coordinates and drawn as SVG over the page. On save they are written as standard `Highlight`, `Square`, `Circle`, `FreeText` and `Stamp` (images) annotations, with their own appearance streams.
 - **[pdf-lib](https://pdf-lib.js.org/)** writes the saved file. It edits the original document rather than copying pages out, so bookmarks, metadata and forms survive. Objects that only deleted pages used are removed, so deleted pages are really gone from the saved file.
 - **Notes** are laid out by a small Markdown renderer (`notes.js`) straight into PDF drawing commands, so their text stays selectable. **[MathJax](https://www.mathjax.org/)** turns LaTeX into SVG, which `math.js` converts into PDF vector paths. The TeX source is added as invisible text, so formulas can be copied and searched. MathJax is only loaded when a note contains math.
 

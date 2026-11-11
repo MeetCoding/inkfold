@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.0: images
+
+- **Add an image** (<kbd>I</kbd>, or the picture button in the toolbar): a dialog offers **Paste from the clipboard** (with a preview; unavailable when the clipboard holds no picture) or **Upload from your computer**. The image goes in the middle of the part of the page you're looking at, scaled down to fit the page if it's big.
+- Move it by dragging, resize it from a corner (it keeps its proportions; hold <kbd>Shift</kbd> to stretch it), and remove it with <kbd>Del</kbd> or the eraser, like a rectangle. Undo works for all of it.
+- Images are saved as standard `Stamp` annotations, so other PDF readers show them, and they're editable again when you reopen the file in Inkfold. Transparent PNGs stay transparent.
+- The toolbar is a little more compact, so it stays on one line in windows 1,280 px wide (narrower windows wrap it onto two lines).
+- The eraser: a click now removes only the topmost thing under it (so clicking a small picture on top of a big one removes just the small one); dragging still removes everything it passes over.
+
 ## 2.3.0: smooth arrow-key scrolling, ← → between pages
 
 - <kbd>↑</kbd> / <kbd>↓</kbd> now glide smoothly instead of jumping in steps: a tap moves a few lines, holding speeds up gently, and letting go eases to a stop.

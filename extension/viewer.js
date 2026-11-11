@@ -61,6 +61,7 @@ const store = {
 //   { page, type: 'rect'|'ellipse', x1, y1, x2, y2, color, width }   (box = centre line of the stroke)
 //   { page, type: 'highlight', rects: [[x1, y1, x2, y2], …], color }   (one box per line of text)
 //   { page, type: 'text', x1, y2, text, size, color }   (x1, y2 = top-left corner; the size comes from textbox.js)
+//   { page, type: 'image', x1, y1, x2, y2, img }        (img: key into imgs, which holds the picture itself)
 const docs = new Map();         // key -> { pdf, bytes, pages: [PDFPageProxy] }
 const views = new Map();        // entry id -> on-screen page
 let entries = [], pages = [], shapes = [], history = [], future = [], hovered = null, renderTimer, nextId = 1, loadId = 0, name;
@@ -74,6 +75,8 @@ const PALETTES = {
 };
 const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}) };
 let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null, erasing = null, eraseHover = null;
+const imgs = new Map();         // image key -> { src: data URL, w, h (pixels), mime }
+let nextImg = 1;
 const ocrBusy = new Set();      // main-document page indexes still waiting for text recognition
 const ocrText = new Map();      // main-document page index -> text recognised on it (pdf.js text items, PDF points)
 const snapshot = () => JSON.stringify({ entries, shapes });
@@ -118,6 +121,8 @@ async function openPdf(buf, fileName) {
   document.title = title ? `${title} (${name})` : name;
   $('pages').setAttribute('aria-label', title || name);
 
+  const stamps = [];   // images Inkfold saved, read back below
+  imgs.clear();
   for (const [i, page] of main.pages.entries()) {
     const e = { id: nextId++, doc: 'main', i, rot: 0 };
     entries.push(e);
@@ -139,10 +144,15 @@ async function openPdf(buf, fileName) {
         const [x1, , , y2] = a.rect, da = a.defaultAppearanceData ?? {};
         const fc = da.fontColor?.length === 3 ? '#' + [...da.fontColor].map(v => v.toString(16).padStart(2, '0')).join('') : colors.text;
         shapes.push({ page: e.id, type: 'text', x1, y1: y2, x2: x1, y2, text: a.contentsObj?.str ?? '', size: da.fontSize || 12, color: fc });
+      } else if (a.subtype === 'Stamp') {
+        const s = { page: e.id, type: 'image', x1: a.rect[0], y1: a.rect[1], x2: a.rect[2], y2: a.rect[3], img: null };
+        shapes.push(s);
+        stamps.push({ s, id: a.id });
       } else continue;
       main.pdf.annotationStorage.setValue(a.id, { noView: true });
     }
   }
+  if (stamps.length) await readStamps(main.bytes, stamps);
   layoutPages();
   setZoom(fitZoom(fit ?? 'auto'), fit);
   scrollTo(0, 0);
@@ -710,25 +720,183 @@ function paint(p) {
       return;
     }
     if (s.type === 'text') return paintText(p, s, i, over);
+    if (s.type === 'image') return paintImage(p, s, i, over);
     const v = view(p, [s.x1, s.y1, s.x2, s.y2]), w = s.width * p.vp.scale;
     const [tag, geo] = s.type === 'rect'
       ? ['rect', { x: v.x, y: v.y, width: v.w, height: v.h }]
       : ['ellipse', { cx: v.x + v.w / 2, cy: v.y + v.h / 2, rx: v.w / 2, ry: v.h / 2 }];
     over.push(el(tag, { ...geo, class: s === eraseHover ? 'shape erasing' : 'shape', fill: 'none', stroke: s.color, 'stroke-width': w }));
     over.push(el(tag, { ...geo, class: 'hit', 'data-i': i, 'stroke-width': Math.max(w, 10) }));   // easier to grab
-    if (s !== sel) return;
-    over.push(el('rect', { class: 'outline', x: v.x, y: v.y, width: v.w, height: v.h }));
-    for (let h = 0; h < 4; h++) {   // corners: 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right
-      over.push(el('rect', {
-        class: 'handle', 'data-h': h, width: 9, height: 9,
-        x: v.x + (h % 2) * v.w - 4.5, y: v.y + (h >> 1) * v.h - 4.5,
-        style: `cursor:${h % 3 ? 'nesw' : 'nwse'}-resize`,
-      }));
-    }
+    if (s === sel) grips(v, over);
   });
   p.hl.replaceChildren(...under);
   p.svg.replaceChildren(...over);
   if (editing?.p === p) placeEditor();
+}
+
+// The selection frame and its four corner handles (0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right).
+function grips(v, over) {
+  over.push(el('rect', { class: 'outline', x: v.x, y: v.y, width: v.w, height: v.h }));
+  for (let h = 0; h < 4; h++) {
+    over.push(el('rect', {
+      class: 'handle', 'data-h': h, width: 9, height: 9,
+      x: v.x + (h % 2) * v.w - 4.5, y: v.y + (h >> 1) * v.h - 4.5,
+      style: `cursor:${h % 3 ? 'nesw' : 'nwse'}-resize`,
+    }));
+  }
+}
+
+function paintImage(p, s, i, over) {
+  const im = imgs.get(s.img);
+  if (!im) return;
+  const [ax, ay] = p.vp.convertToViewportPoint(s.x1, s.y2);   // its top-left corner, turned with the page
+  const g = el('g', { class: s === eraseHover ? 'image erasing' : 'image', transform: `translate(${ax} ${ay}) rotate(${rotationOf(p)}) scale(${p.vp.scale})` });
+  g.append(el('image', { href: im.src, width: s.x2 - s.x1, height: s.y2 - s.y1, preserveAspectRatio: 'none' }));
+  over.push(g);
+  const v = view(p, [s.x1, s.y1, s.x2, s.y2]);
+  over.push(el('rect', { class: 'hit ihit', 'data-i': i, x: v.x, y: v.y, width: v.w, height: v.h }));
+  if (s === sel) grips(v, over);
+}
+
+/* ---------- images ---------- */
+
+const dataBytes = src => Uint8Array.from(atob(src.slice(src.indexOf(',') + 1)), c => c.charCodeAt(0));
+
+// Any picture -> a PNG or JPEG (what PDFs can hold), at most 4,000 px on its longer side.
+async function prepImage(src) {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  let { naturalWidth: w, naturalHeight: h } = img;
+  const mime = src.slice(5, src.indexOf(';'));
+  const k = Math.min(1, 4000 / Math.max(w, h));
+  if ((mime === 'image/png' || mime === 'image/jpeg') && k === 1) return { src, w, h, mime };
+  w = Math.max(1, Math.round(w * k));
+  h = Math.max(1, Math.round(h * k));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  c.getContext('2d').drawImage(img, 0, 0, w, h);
+  const out = mime === 'image/jpeg' ? c.toDataURL('image/jpeg', 0.9) : c.toDataURL('image/png');
+  return { src: out, w, h, mime: mime === 'image/jpeg' ? 'image/jpeg' : 'image/png' };
+}
+
+// Add an image: from the clipboard (offered only when it holds one), or a file from the computer.
+async function addImage(at = targetIndex()) {
+  if (!pages.length) return;
+  const p = pages[at];
+  let clip = null, file = null;
+  try { clip = await chrome.runtime.sendMessage({ type: 'readClipboardImage' }); } catch {}
+  const rClip = el2('input', { type: 'radio', name: 'imgSrc', value: 'clip' });
+  const rFile = el2('input', { type: 'radio', name: 'imgSrc', value: 'file' });
+  const pick = el2('input', { type: 'file', accept: 'image/*', hidden: '' });
+  const choose = el2('button', { type: 'button' }, 'Choose image…');
+  const fileName = el2('small', {}, 'PNG, JPEG, GIF, WebP and other pictures.');
+  const filePrev = el2('img', { class: 'imgprev', alt: '', hidden: '' });
+  rClip.disabled = !clip;
+  rClip.checked = !!clip;
+  rFile.checked = !clip;
+  const update = () => { $('dlgOk').disabled = rClip.checked ? !clip : !file; };
+  for (const r of [rClip, rFile]) r.onchange = update;
+  choose.onclick = () => pick.click();
+  pick.onchange = () => {
+    const f = pick.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      file = rd.result;
+      filePrev.src = file;
+      filePrev.hidden = false;
+      fileName.textContent = f.name;
+      rFile.checked = true;
+      update();
+    };
+    rd.readAsDataURL(f);
+  };
+  const body = [
+    el2('label', { class: 'opt' + (clip ? '' : ' off') }, rClip, el2('span', {}, el2('strong', {}, 'Paste from the clipboard'),
+      el2('small', {}, clip ? 'The picture you copied:' : 'Your clipboard has no picture. Copy one, or take a screenshot, first.'))),
+    ...(clip ? [Object.assign(el2('img', { class: 'imgprev', alt: 'The picture on your clipboard' }), { src: clip })] : []),
+    el2('label', { class: 'opt' }, rFile, el2('span', {}, el2('strong', {}, 'Upload from your computer'), fileName)),
+    el2('div', { class: 'imgpick' }, choose, pick, filePrev),
+  ];
+  const answer = ask({ title: `Add an image to page ${at + 1}`, body, ok: 'Add image', wide: true });
+  update();
+  const ok = await answer;
+  $('dlgOk').disabled = false;
+  if (ok) await placeImage(p, rClip.checked ? clip : file);
+}
+
+// Put it in the middle of the part of the page in view, scaled down to fit the page if it's big.
+async function placeImage(p, src) {
+  let im;
+  try { im = await prepImage(src); } catch { return say('That file couldn’t be read as a picture.'); }
+  const key = 'img' + nextImg++;
+  imgs.set(key, im);
+  const [x0, y0, x1, y1] = p.page.view, PW = x1 - x0, PH = y1 - y0;
+  const k = Math.min(1, (PW * 0.8) / (im.w * 0.75), (PH * 0.8) / (im.h * 0.75));   // 1 px = 0.75 pt at 96 dpi
+  const W = im.w * 0.75 * k, H = im.h * 0.75 * k;
+  const r = p.div.getBoundingClientRect();
+  const sx = (Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2 - r.left;
+  const sy = (Math.max(r.top, 60) + Math.min(r.bottom, innerHeight)) / 2 - r.top;
+  let [cx, cy] = p.vp.convertToPdfPoint(sx, sy);
+  cx = clamp(cx, x0 + W / 2, x1 - W / 2);
+  cy = clamp(cy, y0 + H / 2, y1 - H / 2);
+  commit(snapshot());
+  const s = { page: p.id, type: 'image', x1: cx - W / 2, y1: cy - H / 2, x2: cx + W / 2, y2: cy + H / 2, img: key };
+  shapes.push(s);
+  setTool('select');
+  select(s);
+  say('Image added. Drag it to move it, drag a corner to resize it, or press Del to remove it.');
+}
+
+// The pictures inside Inkfold's saved image stamps, so they can be moved and resized again.
+async function readStamps(bytes, stamps) {
+  const { PDFDocument, PDFRef, PDFName, PDFDict, decodePDFRawStream } = await lib();
+  const N = PDFName.of;
+  let ctx;
+  try { ctx = (await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })).context; } catch { ctx = null; }
+  for (const { s, id } of stamps) {
+    try {
+      const m = /^(\d+)R(\d*)$/.exec(id);
+      const look = ctx.lookup(PDFRef.of(+m[1], +(m[2] || 0)), PDFDict).lookup(N('AP'), PDFDict).lookup(N('N'));
+      const xo = look.dict.lookup(N('Resources'), PDFDict).lookup(N('XObject'), PDFDict);
+      const pic = xo.lookup(xo.keys()[0]), d = pic.dict;
+      const w = d.lookup(N('Width')).asNumber(), h = d.lookup(N('Height')).asNumber(), filter = String(d.lookup(N('Filter')));
+      let src;
+      if (filter === '/DCTDecode') src = 'data:image/jpeg;base64,' + b64(pic.contents);
+      else {   // pdf-lib stores PNGs as raw colour plus a separate alpha mask
+        const raw = decodePDFRawStream(pic).decode(), n = raw.length / (w * h);
+        const mask = d.lookup(N('SMask'));
+        const alpha = mask ? decodePDFRawStream(mask).decode() : null;
+        const rgba = new Uint8ClampedArray(w * h * 4);
+        for (let i = 0; i < w * h; i++) {
+          rgba[i * 4] = raw[i * n]; rgba[i * 4 + 1] = raw[i * n + (n >= 3 ? 1 : 0)]; rgba[i * 4 + 2] = raw[i * n + (n >= 3 ? 2 : 0)];
+          rgba[i * 4 + 3] = alpha ? alpha[i] : 255;
+        }
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        c.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
+        src = c.toDataURL('image/png');
+      }
+      const key = 'img' + nextImg++;
+      imgs.set(key, { src, w, h, mime: filter === '/DCTDecode' ? 'image/jpeg' : 'image/png' });
+      s.img = key;
+    } catch { s.img = null; }
+  }
+  // A stamp that couldn't be read stays in the file as it was (pdf.js draws it), but isn't editable.
+  for (const { s, id } of stamps) {
+    if (s.img) continue;
+    shapes.splice(shapes.indexOf(s), 1);
+    docs.get('main').pdf.annotationStorage.setValue(id, { noView: false });
+  }
+}
+
+function b64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 /* ---------- eraser ---------- */
@@ -739,7 +907,7 @@ function touches(s, x, y, tol) {
   const inBox = ([a, b, c, d], m) => x >= a - m && x <= c + m && y >= b - m && y <= d + m;
   if (s.type === 'highlight') return s.rects.some(r => inBox(r, tol));
   const box = boxOf(s);
-  if (s.type === 'text') return inBox(box, tol);
+  if (s.type === 'text' || s.type === 'image') return inBox(box, tol);
   const m = (s.width || 1) / 2 + tol, [a, b, c, d] = box;
   if (s.type === 'rect') return inBox(box, m) && !(x > a + m && x < c - m && y > b + m && y < d - m);
   const cx = (a + c) / 2, cy = (b + d) / 2, rx = Math.max((c - a) / 2, 1e-3), ry = Math.max((d - b) / 2, 1e-3);
@@ -751,9 +919,10 @@ const underEraser = (e, p) => {
   return shapes.findLast(s => s.page === p.id && touches(s, x, y, tol)) ?? null;
 };
 
-function eraseAt(e, p) {
-  const [x, y] = point(e, p), tol = 6 / p.vp.scale;
-  const hit = shapes.filter(s => s.page === p.id && touches(s, x, y, tol));
+// A click removes only the topmost thing under the pointer; dragging removes everything it passes over.
+function eraseAt(e, p, all = false) {
+  const [x, y] = point(e, p), tol = 6 / p.vp.scale, top = underEraser(e, p);
+  const hit = all ? shapes.filter(s => s.page === p.id && touches(s, x, y, tol)) : top ? [top] : [];
   if (!hit.length) return;
   for (const s of hit) shapes.splice(shapes.indexOf(s), 1);
   if (hit.includes(sel)) sel = null;
@@ -880,7 +1049,7 @@ function down(e, p) {
   const t = e.target, at = point(e, p), before = snapshot();
   if (t.dataset.h) {                                   // resize: the opposite corner stays put
     const v = view(p, [sel.x1, sel.y1, sel.x2, sel.y2]), k = 3 - t.dataset.h;
-    drag = { anchor: p.vp.convertToPdfPoint(v.x + (k % 2) * v.w, v.y + (k >> 1) * v.h) };
+    drag = { anchor: p.vp.convertToPdfPoint(v.x + (k % 2) * v.w, v.y + (k >> 1) * v.h), ratio: (sel.x2 - sel.x1) / (sel.y2 - sel.y1) };
   } else if (tool === 'select' && t.dataset.i) {       // move (a second quick press on a text box edits it)
     const s = shapes[t.dataset.i];
     if (s.type === 'text' && lastPress.s === s && e.timeStamp - lastPress.t < 450) {
@@ -910,11 +1079,18 @@ function down(e, p) {
 }
 
 function move(e) {
-  if (erasing) return eraseAt(e, erasing.p);
+  if (erasing) return eraseAt(e, erasing.p, true);
   if (!drag) return;
-  const [x, y] = point(e, drag.p);
+  let [x, y] = point(e, drag.p);
   if (drag.anchor) {
     const [ax, ay] = drag.anchor;
+    if (sel.type === 'image' && !e.shiftKey) {   // images keep their proportions (Shift: stretch freely)
+      let w = Math.abs(x - ax), h = Math.abs(y - ay);
+      if (w / h > drag.ratio) w = h * drag.ratio; else h = w / drag.ratio;
+      if (w < 4) return;
+      x = ax + (x < ax ? -w : w);
+      y = ay + (y < ay ? -h : h);
+    }
     Object.assign(sel, { x1: Math.min(ax, x), y1: Math.min(ay, y), x2: Math.max(ax, x), y2: Math.max(ay, y) });
   } else {
     const dx = x - drag.from[0], dy = y - drag.from[1], o = drag.orig;
@@ -1031,7 +1207,7 @@ const curColor = () => (sel?.color ?? colors[kind()]).toLowerCase();
 
 function syncControls() {   // the colour and thickness boxes show the selection, or the defaults for the tool
   // With the select tool and nothing selected there's nothing to style, so the controls are hidden.
-  const styling = (tool !== 'select' && tool !== 'eraser') || !!sel;
+  const styling = ((tool !== 'select' && tool !== 'eraser') || !!sel) && sel?.type !== 'image';
   $('styleBox').hidden = $('styleSep').hidden = !styling;
   const pal = palette(), box = $('palette');
   if (box.dataset.set !== pal[0][1]) {   // rebuild when switching between highlighter and ink colours
@@ -1159,6 +1335,7 @@ async function build(list) {
     pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode, setCharacterSqueeze, radians,
   } = await lib();
   let helv = null;   // Helvetica, added only if there are text boxes
+  const pics = new Map();   // image key -> the picture embedded in this file (once, however often it's used)
   const doc = await PDFDocument.load(docs.get('main').bytes, { updateMetadata: false });
   const ctx = doc.context, N = PDFName.of;
   const round = v => +v.toFixed(2), num = (...v) => v.map(round).join(' ');
@@ -1190,7 +1367,7 @@ async function build(list) {
       if (!(d instanceof PDFDict)) continue;
       const author = d.lookup(N('T')), kind = d.lookup(N('Subtype'));
       if (!(author instanceof PDFString || author instanceof PDFHexString) || !MARKS.includes(author.decodeText())) continue;
-      if ([N('Square'), N('Circle'), N('Highlight'), N('FreeText')].includes(kind)) annots.remove(i);
+      if ([N('Square'), N('Circle'), N('Highlight'), N('FreeText'), N('Stamp')].includes(kind)) annots.remove(i);
     }
   }
 
@@ -1199,9 +1376,21 @@ async function build(list) {
   for (const s of shapes) {
     const pg = target.get(s.page);
     if (!pg) continue;
-    const rgb = [1, 3, 5].map(i => +(parseInt(s.color.slice(i, i + 2), 16) / 255).toFixed(3));
+    const rgb = s.color ? [1, 3, 5].map(i => +(parseInt(s.color.slice(i, i + 2), 16) / 255).toFixed(3)) : [0, 0, 0];
     let dict, extra = { C: rgb };
-    if (s.type === 'text') {
+    if (s.type === 'image') {
+      // A Stamp annotation whose appearance is the picture, so every viewer shows it; Inkfold reads it back.
+      const im = imgs.get(s.img);
+      if (!im) continue;
+      let pic = pics.get(s.img);
+      if (!pic) pics.set(s.img, pic = await (im.mime === 'image/jpeg' ? doc.embedJpg(dataBytes(im.src)) : doc.embedPng(dataBytes(im.src))));
+      const box = [s.x1, s.y1, s.x2, s.y2].map(round), w = round(s.x2 - s.x1), h = round(s.y2 - s.y1);
+      const look = ctx.stream(`q ${w} 0 0 ${h} ${box[0]} ${box[1]} cm /Im Do Q`, {
+        Type: 'XObject', Subtype: 'Form', BBox: box, Resources: { XObject: { Im: pic.ref } },
+      });
+      dict = { Subtype: 'Stamp', Rect: box, Name: 'Image', Contents: PDFHexString.fromText('Image'), AP: { N: ctx.register(look) } };
+      extra = {};
+    } else if (s.type === 'text') {
       // A FreeText annotation: the text as its contents, drawn by its own appearance (Helvetica plus math outlines).
       // The leading and trailing no-op text objects tell readers (pdf.js included) the font size and colour.
       const L = await layout(s.text, s.size), box = boxOf(s).map(round);
@@ -1441,6 +1630,7 @@ const thisPage = () => (pages.length ? new Set([pages[targetIndex()].id]) : null
 
 for (const b of document.querySelectorAll('button[data-tool]')) b.onclick = () => setTool(b.dataset.tool);
 for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
+$('addImage').onclick = () => addImage();
 $('ocrStop').onclick = () => { ocrStop = true; showOcr(null); };
 $('tsmaller').onclick = () => setTextSize(-1);
 $('tbigger').onclick = () => setTextSize(1);
@@ -1579,7 +1769,7 @@ addEventListener('resize', () => {
 
 // Every shortcut, in one place. Keys listed in the buttons' labels and in the ? sheet.
 const KEYS = {
-  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'), 't': () => setTool('text'), 'e': () => setTool('eraser'),
+  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'), 't': () => setTool('text'), 'e': () => setTool('eraser'), 'i': () => addImage(),
   '-': () => setTextSize(-1), '=': () => setTextSize(1), '+': () => setTextSize(1),
   'c': nextColor,
   '1': () => setWidth(1), '2': () => setWidth(2), '3': () => setWidth(4),

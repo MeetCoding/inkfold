@@ -2,6 +2,7 @@
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === 'offscreen:ocr') { ocr(msg.image).then(reply, e => reply({ error: String(e?.message ?? e) })); return true; }
   if (msg?.type === 'offscreen:readFile') { readFile(msg.url).then(reply, () => reply(null)); return true; }
+  if (msg?.type === 'offscreen:readClipboardImage') { readClipboardImage().then(reply, () => reply(null)); return true; }
   if (msg?.type !== 'offscreen:readClipboard') return false;
   const box = document.getElementById('paste');
   box.value = '';
@@ -71,4 +72,21 @@ function ocr(image) {
   });
   queue = job.catch(() => {});
   return job;
+}
+
+// An image on the clipboard (a screenshot, a copied picture), as a data: URL, or null. Pasting into this
+// hidden page hands it over without Chrome asking on behalf of the website the PDF came from.
+function readClipboardImage() {
+  const box = document.getElementById('paste');
+  let file = null;
+  const take = e => {
+    e.preventDefault();
+    file = [...(e.clipboardData?.items ?? [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile() ?? null;
+  };
+  box.addEventListener('paste', take, { once: true });
+  box.focus();
+  document.execCommand('paste');
+  box.removeEventListener('paste', take);
+  if (!file) return Promise.resolve(null);
+  return new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ok(null); r.readAsDataURL(file); });
 }
