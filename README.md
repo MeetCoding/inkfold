@@ -76,8 +76,9 @@ Coming soon.
 | <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
 | <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
 | <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |
-| <kbd>T</kbd> / <kbd>E</kbd> | Text box / eraser | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
-| <kbd>C</kbd> | Next colour | <kbd>J</kbd> / <kbd>K</kbd> | Next / previous page |
+| <kbd>T</kbd> / <kbd>E</kbd> | Text box / eraser |
+| | | <kbd>↑</kbd> / <kbd>↓</kbd> | Smooth scrolling (hold to go faster) | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
+| <kbd>C</kbd> | Next colour | <kbd>→</kbd> / <kbd>←</kbd> (or <kbd>J</kbd> / <kbd>K</kbd>) | Next / previous page |
 | | | <kbd>G</kbd> | Go to page number |
 | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |
 | <kbd>−</kbd> / <kbd>+</kbd> | Smaller / larger text | | |

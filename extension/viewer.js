@@ -1366,6 +1366,41 @@ function setWidth(w) {
 }
 
 function goPage(dir) { jumpTo(currentIndex() + dir); }
+
+// ← / →: glide to the previous or next page (or pair of pages, in two-page view). Quick presses add up.
+let pageTarget = -1, pageTargetAt = 0;
+function stepPage(dir) {
+  if (!pages.length) return;
+  const from = performance.now() - pageTargetAt < 700 ? pageTarget : currentIndex();
+  const k = clamp(from + dir * (spread ? 2 : 1), 0, pages.length - 1);
+  pageTarget = k;
+  pageTargetAt = performance.now();
+  pages[k].div.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  showPage(k);
+}
+
+// ↑ / ↓: a smooth glide instead of the browser's steps. Holding the key speeds it up gently;
+// letting go eases it to a stop. A quick tap moves about three lines.
+let glide = null;
+function glideStart(dir) {
+  if (glide) { glide.dir = dir; glide.held = true; return; }
+  const g = glide = { dir, v: 0.45, held: true, t: performance.now() };   // speed in px per ms
+  const tick = now => {
+    if (glide !== g) return;
+    const dt = Math.min(40, now - g.t);
+    g.t = now;
+    if (g.held) g.v = Math.min(1.6, g.v + dt * 0.0022);
+    else if ((g.v -= dt * 0.007) <= 0) { glide = null; return; }
+    const y = scrollY;
+    scrollTo({ top: y + g.dir * g.v * dt, behavior: 'instant' });
+    if (Math.abs(scrollY - y) < 0.01 && dt > 0 && !g.held) { glide = null; return; }   // reached the top or end
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+const glideStop = () => { if (glide) glide.held = false; };
+addEventListener('keyup', e => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') glideStop(); });
+addEventListener('blur', () => { glide = null; });
 function jumpTo(k) {
   k = clamp(k, 0, pages.length - 1);
   pages[k]?.div.scrollIntoView({ block: 'start' });
@@ -1591,6 +1626,8 @@ addEventListener('keydown', e => {
   if (typing) return;
   if (k === 'delete' && e.shiftKey) { e.preventDefault(); const ids = thisPage(); return ids && deletePages(ids); }
   if (k === 'f' && e.shiftKey) { e.preventDefault(); return toggleFull(); }
+  if (!e.shiftKey && (k === 'arrowdown' || k === 'arrowup')) { e.preventDefault(); return glideStart(k === 'arrowdown' ? 1 : -1); }
+  if (!e.shiftKey && (k === 'arrowleft' || k === 'arrowright')) { e.preventDefault(); return stepPage(k === 'arrowright' ? 1 : -1); }
   const fn = KEYS[e.key === '?' ? '?' : k];
   if (!fn) return;
   e.preventDefault();

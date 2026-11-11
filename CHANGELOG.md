@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.0: smooth arrow-key scrolling, ← → between pages
+
+- <kbd>↑</kbd> / <kbd>↓</kbd> now glide smoothly instead of jumping in steps: a tap moves a few lines, holding speeds up gently, and letting go eases to a stop.
+- <kbd>←</kbd> / <kbd>→</kbd> glide to the previous or next page (the previous or next pair in two-page view). Quick presses add up. Arrow keys still work as usual in text boxes and fields.
+
 ## 2.2.1: full-screen button and F11
 
 - Fixed: after going full screen with Chrome's F11, the full-screen button seemed to stop working (it showed "enter full screen" and clicking it did nothing visible). It now recognises F11, shows the "exit" state, and says to press F11 to leave, since a page isn't allowed to end Chrome's own full screen. Once F11 is off, the button works as before.
