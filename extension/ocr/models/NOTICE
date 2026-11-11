@@ -1,0 +1,10 @@
+Text recognition models from PaddleOCR (https://github.com/PaddlePaddle/PaddleOCR), PP-OCRv5, in ONNX form
+as published by RapidOCR (https://github.com/RapidAI/RapidOCR). Licensed under the Apache License 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). Unmodified.
+
+  det.onnx   PP-OCRv5 mobile text detection (ch_PP-OCRv5_det_mobile)
+  rec.onnx   PP-OCRv5 mobile English text recognition (en_PP-OCRv5_rec_mobile)
+  cls.onnx   PP-LCNet x0.25 text line orientation (ch_PP-LCNet_x0_25_textline_ori_cls_mobile)
+  dict.txt   ppocrv5_en_dict.txt, the recogniser's characters
+
+Copyright (c) PaddlePaddle Authors.

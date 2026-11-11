@@ -1,6 +1,6 @@
 # Inkfold privacy policy
 
-_Last updated: 11 November 2026 (version 2.11.4)_
+_Last updated: 11 November 2026 (version 2.12.0)_
 
 Inkfold is a Chrome extension for annotating PDFs. It is built so that your documents stay on your computer.
 
@@ -19,7 +19,7 @@ Inkfold does not collect, store on any server, sell, or share any personal data.
 | **Images of scanned pages** | When a PDF has pages without text, Inkfold renders those pages as images and recognises their text, in a hidden page of the extension, with the text-recognition engine bundled in the extension. | Stays in your browser. The recognised text is kept in memory, and written only into copies you save. |
 | **Settings and reading places** | Whether PDFs open in Inkfold automatically, your last colours and zoom, which tips you have already seen, and, for each of your last 300 PDFs, the page and zoom you were at (kept under an anonymous fingerprint of the file, not its name or contents). | Stored locally in Chrome's extension storage on your device. |
 
-Inkfold makes no network requests other than loading the PDF you chose to open. All the libraries it uses (pdf.js, pdf-lib, MathJax, and the Tesseract text-recognition engine with its English language model) are bundled inside the extension. No code or data is loaded from the internet. Checking whether a PDF can be compressed, and compressing it, also happens entirely in your browser; Inkfold remembers only an anonymous fingerprint of PDFs it has already checked, so it asks just once.
+Inkfold makes no network requests other than loading the PDF you chose to open. All the libraries it uses (pdf.js, pdf-lib, MathJax, and, for text recognition, ONNX Runtime with PaddleOCR's models) are bundled inside the extension. No code or data is loaded from the internet. Checking whether a PDF can be compressed, and compressing it, also happens entirely in your browser; Inkfold remembers only an anonymous fingerprint of PDFs it has already checked, so it asks just once.
 
 ## Permissions
 

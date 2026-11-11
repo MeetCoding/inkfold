@@ -334,8 +334,8 @@ function textLayer(p) {   // invisible, selectable text laid over the canvas
 
 /* ---------- recognising text (OCR) ---------- */
 
-// Pages without text of their own (scans, photos of pages) are read by Tesseract, in the extension's hidden
-// helper page, one page at a time. What it finds becomes an ordinary text layer, so it can be selected,
+// Pages without text of their own (scans, photos of pages) are read by PaddleOCR, in a worker of the extension's
+// hidden helper page, one page at a time. What it finds becomes an ordinary text layer, so it can be selected,
 // searched, highlighted and read by assistants, and it's saved into copies as invisible text.
 const OCR_STYLES = { ocr: { fontFamily: 'sans-serif', ascent: 0.8, descent: -0.2, vertical: false } };
 let ocrStop = false;
@@ -381,8 +381,14 @@ async function autoOcr(id) {
   let done = 0, found = 0;
   const total = todo.length;
   showOcr({ phase: 'running', done, total });
-  for (const i of todo) {
+  const left = new Set(todo);
+  while (left.size) {
     if (id !== loadId || ocrStop) break;
+    // Next, the scanned page nearest the one you're looking at (from it onwards first), so it gets its text soonest.
+    const e = entries[currentIndex()], at = e?.doc === 'main' ? e.i : 0;
+    let i = null;
+    for (const k of left) if (i === null || Math.abs(k - at) + (k < at ? 0.5 : 0) < Math.abs(i - at) + (i < at ? 0.5 : 0)) i = k;
+    left.delete(i);
     let result, vp;
     try {
       const shot = await pageImage(main.pages[i]);
@@ -426,20 +432,21 @@ async function pageImage(page) {   // the page as a ~200 dpi JPEG, upright as it
   return { vp, image };
 }
 
-// Tesseract's words (image pixels) -> pdf.js text items (PDF points). Each word carries the space after it,
-// and spans up to the next word, so selecting a line copies it as one line of text.
+// Recognised words (image pixels) -> pdf.js text items (PDF points). A word is given by where its baseline starts
+// and ends (a, z) and its line's letter height (h), so skewed, vertical and upside-down lines keep their direction.
+// Each word carries the space after it and spans up to the next word, so selecting a line copies it as one line.
 function ocrItems(lines, vp) {
   const items = [];
   for (const line of lines ?? []) {
-    const H = line.b[3] - line.b[1];
-    if (H <= 2) continue;
-    const base = line.b[3] - 0.2 * H;
+    if (!(line.h > 2)) continue;
     line.words.forEach((w, k) => {
       const next = line.words[k + 1];
-      const x0 = w.b[0], x1 = next ? next.b[0] : w.b[2];
-      const [ox, oy] = vp.convertToPdfPoint(x0, base), [ex, ey] = vp.convertToPdfPoint(x1, base), [tx, ty] = vp.convertToPdfPoint(x0, base - H);
-      const width = Math.hypot(ex - ox, ey - oy), size = Math.hypot(tx - ox, ty - oy), a = Math.atan2(ey - oy, ex - ox);
-      const cos = Math.cos(a), sin = Math.sin(a);
+      const end = next ? next.a : w.z;
+      const dx = w.z[0] - w.a[0], dy = w.z[1] - w.a[1], len = Math.hypot(dx, dy) || 1;
+      const top = [w.a[0] + dy / len * line.h, w.a[1] - dx / len * line.h];   // up from the baseline, at the word's start
+      const [ox, oy] = vp.convertToPdfPoint(...w.a), [ex, ey] = vp.convertToPdfPoint(...end), [tx, ty] = vp.convertToPdfPoint(...top);
+      const width = Math.hypot(ex - ox, ey - oy), size = Math.hypot(tx - ox, ty - oy);
+      const a = Math.atan2(ey - oy, ex - ox), cos = Math.cos(a), sin = Math.sin(a);
       items.push({
         str: next ? w.t + ' ' : w.t, dir: 'ltr', width, height: size, fontName: 'ocr', hasEOL: !next,
         transform: [size * cos, size * sin, -size * sin, size * cos, ox, oy],

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.12.0: much better text recognition (PaddleOCR)
+
+- **New OCR engine**: scanned pages are now read with [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)'s PP-OCRv5 models (a text detector, an English recogniser and a small line-orientation model) on ONNX Runtime, replacing Tesseract. Everything is still bundled and runs on your computer.
+- **Far more accurate on hard pages.** On test pages with known text (words recognised correctly, F1):
+  - a table: 100 (Tesseract: 14);
+  - photographed pages, with dim, uneven light: 98–99 (Tesseract: 69–71);
+  - upside-down pages: 98 (Tesseract: 2–3);
+  - small two-column print with scanner noise or low resolution: 98 (Tesseract: 94–95);
+  - clean, skewed and typewriter pages: 98–100, as before.
+- **Reading order**: lines come out in the order you'd read them (columns left to right, tables row by row), so selecting across lines, copying, finding phrases and assistants such as Gemini follow the text. Text on skewed, upside-down or sideways pages runs in the right direction.
+- **The page you're on goes first**: scanned pages are read starting from the one you're looking at.
+- **Speed**: it uses several processor cores when it can (the extension's pages are now cross-origin isolated, which allows multithreaded WebAssembly). A dense page takes a few seconds on a typical computer; it runs in the background, and you can stop it from the gear panel. The worker is let go after a minute without work, to free its memory.
+- The download is about 10 MB larger (19 MB): ONNX Runtime and the models, less Tesseract. The models themselves barely compress.
+
 ## 2.11.4: fixes
 
 - **Merge PDFs list**: rows are drawn properly again: the grip, number, name and page count sit on one line, and This PDF has its blue row. (Their styles had been dropped by mistake in 2.11.2.) The panel also scrolls again when it's taller than the window.

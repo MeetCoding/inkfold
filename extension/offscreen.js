@@ -11,46 +11,26 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   return false;
 });
 
-// Text recognition (OCR) with Tesseract, bundled with the extension: the engine, its worker and the
-// English model all load from the extension itself, so nothing is downloaded and no image leaves the computer.
-// One engine is shared by every tab; pages are recognised one at a time, in the order they're asked for.
-let engine = null, queue = Promise.resolve();
-const here = path => chrome.runtime.getURL(path);
-
-function getEngine() {
-  engine ??= (async () => {
-    const { createWorker, OEM } = (await import(here('lib/tesseract/tesseract.esm.min.js'))).default;
-    return createWorker('eng', OEM.LSTM_ONLY, {
-      workerPath: here('lib/tesseract/worker.min.js'),
-      corePath: here('lib/tesseract'),          // picks the SIMD build when the computer supports it
-      langPath: here('lib/tesseract'),
-      workerBlobURL: false, cacheMethod: 'none', gzip: true,
-    });
-  })().catch(e => { engine = null; throw e; });
-  return engine;
-}
-
-// image: a data: URL of the rendered page. Returns { w, h, lines: [{ b, words: [{ t, b }] }] } in image pixels,
-// where b = [x0, y0, x1, y1]. Words Tesseract isn't reasonably sure of are left out.
+// Text recognition (OCR) runs in a worker of its own (ocr/worker.js), with PaddleOCR's models on ONNX Runtime,
+// all bundled with the extension, so nothing is downloaded and no image leaves the computer. One worker is shared
+// by every tab; it reads pages one at a time, in the order they're asked for.
+let worker = null, nextJob = 0, idle = 0;
+const waiting = new Map();
 function ocr(image) {
-  const job = queue.then(async () => {
-    const w = await getEngine();
-    const { data } = await w.recognize(image, {}, { blocks: true, text: false });
-    const lines = [];
-    for (const block of data.blocks ?? []) {
-      for (const para of block.paragraphs ?? []) {
-        for (const line of para.lines ?? []) {
-          const words = (line.words ?? [])
-            .filter(x => x.text?.trim() && x.confidence >= 40)
-            .map(x => ({ t: x.text.trim(), b: [x.bbox.x0, x.bbox.y0, x.bbox.x1, x.bbox.y1] }));
-          if (words.length) lines.push({ b: [line.bbox.x0, line.bbox.y0, line.bbox.x1, line.bbox.y1], words });
-        }
-      }
-    }
-    return { lines };
-  });
-  queue = job.catch(() => {});
-  return job;
+  clearTimeout(idle);
+  if (!worker) {
+    worker = new Worker('ocr/worker.js', { type: 'module' });
+    worker.onmessage = ({ data }) => {
+      const w = waiting.get(data.id);
+      waiting.delete(data.id);
+      data.error ? w?.no(new Error(data.error)) : w?.ok(data.result);
+      // A minute with nothing to read: let the worker go, giving back the memory its models and threads use.
+      if (!waiting.size) idle = setTimeout(() => { if (!waiting.size) { worker?.terminate(); worker = null; } }, 60_000);
+    };
+    worker.onerror = e => { for (const w of waiting.values()) w.no(new Error(e.message || 'The text recognition worker stopped.')); waiting.clear(); worker = null; };
+  }
+  const id = ++nextJob;
+  return new Promise((ok, no) => { waiting.set(id, { ok, no }); worker.postMessage({ type: 'ocr', id, image }); });
 }
 
 // An image on the clipboard (a screenshot, a copied picture), as a data: URL, or null. Pasting into this

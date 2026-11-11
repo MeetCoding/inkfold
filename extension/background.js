@@ -48,7 +48,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 
 // Two things a PDF tab can't do itself, done in a hidden extension page:
 // • read the clipboard (from a web page, Chrome would ask on behalf of that website), only when the user opens "Add a note";
-// • recognise text (OCR) in pages that have none, with the bundled Tesseract engine, in a worker of its own.
+// • recognise text (OCR) in pages that have none, with the bundled PaddleOCR models, in a worker of its own.
 let creating = null;   // requests arriving together share one creation
 async function offscreen(msg) {
   if (!(await chrome.offscreen.hasDocument?.())) {
