@@ -1,0 +1,56 @@
+# Publishes GitHub releases for Inkfold.
+# • Pushing a version tag (v1.9.1, …) publishes that version.
+# • "Run workflow" on the Actions tab publishes every v* tag that has no release yet (oldest first).
+# Each release gets the extension zip built from that tag, and its notes from CHANGELOG.md.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Publish releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tags="${GITHUB_REF_NAME}"
+          else
+            tags=$(git tag -l 'v*' | sort -V)
+          fi
+          newest=$(git tag -l 'v*' | sort -V | tail -1)
+          for tag in $tags; do
+            v="${tag#v}"
+            if gh release view "$tag" >/dev/null 2>&1; then echo "$tag: already released"; continue; fi
+            # The extension, exactly as it was at this tag
+            rm -rf build && mkdir build
+            git archive "$tag" extension | tar -x -C build
+            (cd build/extension && zip -qr -X "../../inkfold-$v.zip" . -x '.*' -x '*/.*')
+            # Title and notes from this version's CHANGELOG section ("## 1.9.0: title")
+            heading=$(grep -m1 -E "^## ${v//./\\.}(:|$)" CHANGELOG.md || true)
+            title="Inkfold $v"
+            case "$heading" in *:*) title="Inkfold $v: ${heading#*: }";; esac
+            awk -v v="$v" '/^## /{ on = ($2 == v || $2 == v":") ; next } on' CHANGELOG.md > notes.md
+            if [ "$v" = "1.4.0" ]; then   # versions from before this repository
+              { echo; echo '### Before 1.4.0 (as "PDF Shapes", before this repository)'; echo;
+                awk '/^## 1\.3\.0/{on=1} on' CHANGELOG.md | sed 's/^## /#### /'; } >> notes.md
+            fi
+            { echo; echo '---'; echo;
+              echo "**Install:** download \`inkfold-$v.zip\`, unzip it, open \`chrome://extensions\`, turn on **Developer mode**, click **Load unpacked** and choose the unzipped folder. The same zip is what goes to the Chrome Web Store."; } >> notes.md
+            latest=false; [ "$tag" = "$newest" ] && latest=true
+            gh release create "$tag" "inkfold-$v.zip" --title "$title" --notes-file notes.md --latest=$latest
+            echo "$tag: released"
+          done

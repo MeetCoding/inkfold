@@ -35,7 +35,11 @@
 
 ## Install
 
-### From source (now)
+### From a release
+
+Download `inkfold-<version>.zip` from [Releases](https://github.com/MeetCoding/inkfold/releases), unzip it, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and choose the unzipped folder.
+
+### From source
 
 1. Download this repository (green **Code** button → **Download ZIP**) and unzip it, or `git clone https://github.com/MeetCoding/inkfold`.
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
@@ -148,6 +152,7 @@ There is no build step: the extension is plain HTML, CSS and JavaScript modules.
 
 - Edit files in `extension/`, then click the reload icon on Inkfold's card in `chrome://extensions`.
 - `scripts/package.sh` creates `dist/inkfold-<version>.zip`, ready to upload to the Chrome Web Store.
+- Releases: add a `## <version>: <title>` section to [CHANGELOG.md](CHANGELOG.md), then push a `v<version>` tag. The Release workflow builds the zip from that tag and publishes the release with those notes. Running the workflow by hand publishes any tag that has no release yet.
 - To update a bundled library, replace its files in `extension/lib/` with the same files from its npm package (`pdfjs-dist`, `pdf-lib`, `mathjax@3`) and update the versions in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Credits
