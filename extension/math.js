@@ -5,18 +5,16 @@
 let ready = null;
 
 export function loadMath() {
-  ready ??= new Promise((ok, no) => {
+  // Imported (not added as a <script>) so it also works when the viewer runs inside a PDF's tab.
+  ready ??= (async () => {
     window.MathJax = {
       startup: { typeset: false },
       svg: { fontCache: 'none' },          // every glyph as its own path, no <use> references
       options: { enableMenu: false },
     };
-    const s = document.createElement('script');
-    s.src = new URL('./lib/mathjax/tex-svg-full.js', import.meta.url).href;
-    s.onload = () => window.MathJax.startup.promise.then(ok, no);
-    s.onerror = () => no(new Error('MathJax could not be loaded'));
-    document.head.append(s);
-  }).catch(e => { ready = null; throw e; });
+    await import(new URL('./lib/mathjax/tex-svg-full.js', import.meta.url).href);
+    await window.MathJax.startup.promise;
+  })().catch(e => { ready = null; throw e; });
   return ready;
 }
 

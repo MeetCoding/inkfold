@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0
+
+- Web PDFs now open in Inkfold **inside their own tab**, keeping their `https://` address, instead of moving to an extension page. This lets Gemini in Chrome (and similar tools) read and share them; previously Gemini showed "Tab cannot be shared".
+- With automatic opening off, the toolbar icon opens the current PDF in place.
+- Settings are kept in the extension's own storage.
+- The clipboard is read by the extension itself when you add a note, so no website prompt appears.
+- One fewer permission: the network redirect rule (`declarativeNetRequestWithHostAccess`) is no longer needed.
+
 ## 1.4.0: Inkfold
 
 - New name: **Inkfold** (previously "PDF Shapes"). Files saved by earlier versions stay fully editable.

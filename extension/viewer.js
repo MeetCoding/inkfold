@@ -1,6 +1,29 @@
 import * as pdfjs from './lib/pdf.min.mjs';
 import { notePdf } from './notes.js';
-pdfjs.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.mjs';
+
+// The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
+// content.js, so the tab keeps its https:// address). Its own files always come from the extension.
+const EXT = new URL('./', import.meta.url).href;
+const IN_PAGE = location.protocol !== 'chrome-extension:';
+await startWorker();
+
+async function startWorker() {
+  const src = EXT + 'lib/pdf.worker.min.mjs';
+  pdfjs.GlobalWorkerOptions.workerSrc = src;
+  if (!IN_PAGE) return;
+  // A page can't start a worker from the extension's address, but it can from a copy of the script.
+  // If the site forbids that too, pdf.js falls back to running on the main thread.
+  try {
+    const code = await (await fetch(src)).text();
+    const w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })), { type: 'module' });
+    const ok = await Promise.race([
+      new Promise(r => setTimeout(() => r(true), 400)),
+      new Promise(r => w.addEventListener('error', () => r(false), { once: true })),
+    ]);
+    if (ok) pdfjs.GlobalWorkerOptions.workerPort = w;
+    else w.terminate();
+  } catch {}
+}
 
 const MARK = 'Inkfold';         // author tag on the annotations we write, so we can re-edit them later
 const MARKS = [MARK, 'PDF Shapes'];   // also recognise files saved by the earlier name
@@ -8,14 +31,16 @@ const CSS_PER_PT = 96 / 72;
 const NS = 'http://www.w3.org/2000/svg';
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 const GAP = 16;                 // matches main's gap and padding in viewer.css
-const PDFJS_OPTS = { cMapUrl: 'lib/cmaps/', standardFontDataUrl: 'lib/standard_fonts/', wasmUrl: 'lib/wasm/' };
+const PDFJS_OPTS = { cMapUrl: EXT + 'lib/cmaps/', standardFontDataUrl: EXT + 'lib/standard_fonts/', wasmUrl: EXT + 'lib/wasm/' };
 const $ = id => document.getElementById(id);
 const header = document.querySelector('header');
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const lib = () => import('./lib/pdf-lib.esm.min.js');
+// Settings live in the extension's own storage (not the website's), loaded once at start.
+const settings = await chrome.storage.local.get(null).catch(() => ({}));
 const store = {
-  get(k, fallback) { try { return JSON.parse(localStorage.getItem(k)) ?? fallback; } catch { return fallback; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  get: (k, fallback) => settings[k] ?? fallback,
+  set(k, v) { settings[k] = v; chrome.storage.local.set({ [k]: v }).catch(() => {}); },
 };
 
 // The document is a list of page entries, each pointing at a page of a source PDF:
@@ -354,7 +379,10 @@ function deletePages(ids) {
 async function addNote(after = currentIndex()) {
   if (!pages.length) return;
   let md = '';
-  try { md = await navigator.clipboard.readText(); } catch { return say('Chrome didn’t allow reading the clipboard. Click the page, then try again.'); }
+  try {
+    md = IN_PAGE ? await chrome.runtime.sendMessage({ type: 'readClipboard' }) : await navigator.clipboard.readText();
+    if (md == null) throw 0;
+  } catch { return say('Chrome didn’t allow reading the clipboard. Click the page, then try again.'); }
   if (!md.trim()) return say('Your clipboard has no text. Copy some Markdown first, then add the note (N).');
   if (!store.get('seen-note-intro', false)) {
     const ok = await ask({
@@ -1024,16 +1052,16 @@ $('spread').setAttribute('aria-pressed', spread);
 
 // First run: what Inkfold does to Chrome's PDF handling, file access, and privacy.
 async function welcome() {
-  const fileAccess = await chrome.extension?.isAllowedFileSchemeAccess?.().catch(() => true) ?? true;
-  const settings = el2('button', { type: 'button', class: 'link' }, 'Open Inkfold’s settings');
-  settings.onclick = () => chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+  const fileAccess = await chrome.runtime.sendMessage({ type: 'fileAccess' }).catch(() => true) ?? true;
+  const settingsBtn = el2('button', { type: 'button', class: 'link' }, 'Open Inkfold’s settings');
+  settingsBtn.onclick = () => chrome.runtime.sendMessage({ type: 'openSettings' });
   const list = el2('ul', {},
     el2('li', {}, el2('strong', {}, 'PDFs now open here. '), 'Any PDF you open in Chrome opens in Inkfold. To use Chrome’s own viewer again, right-click the Inkfold toolbar icon and untick “Open every PDF with Inkfold”.'),
     el2('li', {}, el2('strong', {}, 'Your files stay on your computer. '), 'Nothing is uploaded. Saving makes a new copy; your original PDF is never changed.'),
     el2('li', {}, el2('strong', {}, 'Keyboard first. '), 'Every button shows its shortcut in brackets. Press ? for the full list.'),
   );
   if (!fileAccess) {
-    list.append(el2('li', {}, el2('strong', {}, 'PDFs on your computer: '), 'to open them straight from Chrome, turn on “Allow access to file URLs”. ', settings));
+    list.append(el2('li', {}, el2('strong', {}, 'PDFs on your computer: '), 'to open them straight from Chrome, turn on “Allow access to file URLs”. ', settingsBtn));
   }
   await ask({ title: 'Welcome to Inkfold', body: [para('Highlight, draw, add notes, and rotate, delete or split pages, right in Chrome.'), list], ok: 'Get started', cancel: null });
   store.set('welcomed', true);
@@ -1044,4 +1072,5 @@ if (!store.get('welcomed', false) || location.search.startsWith('?welcome')) wel
 const at = location.href.indexOf('?src=');
 let src = at < 0 ? null : location.href.slice(at + 5);
 if (src && /^[a-z]+%3a/i.test(src)) src = decodeURIComponent(src);
+if (IN_PAGE) src = location.href;
 if (src) openUrl(src);
