@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.11.0: move pages, merge PDFs, pictures as pages
+
+- **Move a page.** Right-click a page and choose **Move page** (or press M over it). The page lifts and a small copy of it follows the pointer; a line shows the gap it will drop into, between any two pages (or at either end, and between the two pages of a row in two-page view). Click to drop it. The window scrolls when you near its top or bottom. Arrow keys, Home and End move the line too; Enter drops, Esc cancels; Ctrl+Z puts it back.
+- **Merge PDFs**, in the gear's Pages and file panel: **Add PDFs…** (pick several at once, or drop them on the panel), put them in order by dragging their grips (or ↑ ↓ on a focused grip), remove any with ×, then **Merge and save**, which asks where to save the new file. The open PDF, with your highlights, notes and page changes, is in the list until you remove it. Page counts are shown, and password-protected files are flagged. The open PDF itself isn't changed.
+- **Pictures on a page, or as a page.** Adding a picture (with Add image, or a copied picture with Magic paste) now offers **Add to page N** (on the page, to move and resize, as before) or **Add as a new page after page N**: a page of its own, as wide as the PDF's pages and as tall as the picture needs, like a note. Image pages are labelled "image" in the page number.
+
 ## 2.10.0: faster opening, large files, and back where you left off
 
 - **Opens about twice as fast.** Before, the viewer started the PDF reader's worker only once it was on screen, then waited a fixed 0.6 s to be sure it had started, and only then began reading the file. Now the worker, the reader and the file all start loading the moment the tab opens, and the worker is used as soon as it reports ready. A small PDF's first page shows in about 0.35 s instead of 0.9 s, and a 500-page PDF in about 0.5 s instead of 1.15 s (measured on the same machine).

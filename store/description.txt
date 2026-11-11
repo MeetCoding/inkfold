@@ -13,7 +13,8 @@ Press N and type a note, or copy Markdown from your notes app, an AI chat or any
 
 ORGANISE PAGES
 • Right-click any page to rotate or delete it, or work on ranges like 2-4, 7, 10-end
-• Split a PDF into several files in one step: 1-3, 4-8, 9-end
+• Move pages by drag and drop, merge several PDFs into one, and split a PDF into several files in one step: 1-3, 4-8, 9-end
+• Add pictures on a page, or as pages of their own
 • Everything can be undone
 
 SCANNED PDFS BECOME SEARCHABLE

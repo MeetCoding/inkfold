@@ -68,6 +68,6 @@ To test: open any PDF link on the web (for example the PDF of any arXiv paper). 
 • Press N to type a note page, or copy some Markdown and press Ctrl+V (Magic paste).
 • Open a scanned PDF (no text layer): text is recognised in the background (progress in the gear button's panel) and becomes selectable. Ctrl+F then finds words on those pages. Saved copies contain it as invisible text.
 • Open a PDF with large images (several MB): a card offers to compress it.
-• Right-click a page to rotate or delete it; press P to work on ranges or split. Ctrl+S saves (over the original after you confirm, or as a new copy).
+• Right-click a page to rotate, delete or move it (Move page, then click between two pages); press P to work on ranges, split, or merge other PDFs into one new file. Ctrl+S saves (over the original after you confirm, or as a new copy).
 Automatic opening can be turned off from the toolbar icon's right-click menu. No account or setup is needed.
 ```

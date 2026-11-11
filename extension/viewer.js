@@ -107,6 +107,7 @@ async function openPdf(buf, fileName) {
   ocrBusy.clear();
   showOcr({ phase: 'checking' });
   showZip({ phase: 'checking' });
+  mergeItems = [{ current: true }];
   $('notice').hidden = true;
   document.body.classList.add('loaded');
 
@@ -243,6 +244,8 @@ function makeView(e) {
   return p;
 }
 
+const kindOf = e => (e.doc === 'main' ? '' : e.doc.startsWith('pic') ? 'image' : 'note');   // pages added here
+
 function layoutPages() {   // match the DOM to `entries`
   const live = new Set(entries.map(e => e.id));
   for (const p of views.values()) {
@@ -258,8 +261,9 @@ function layoutPages() {   // match the DOM to `entries`
   });
   $('pages').replaceChildren(...pages.map(p => p.div));
   pages.forEach((p, k) => {
-    p.num.textContent = `${k + 1}${p.e.doc === 'main' ? '' : ' · note'}`;
-    p.div.setAttribute('aria-label', `Page ${k + 1}${p.e.doc === 'main' ? '' : ' (note)'}`);
+    const kind = kindOf(p.e);
+    p.num.textContent = `${k + 1}${kind ? ' · ' + kind : ''}`;
+    p.div.setAttribute('aria-label', `Page ${k + 1}${kind ? ` (${kind})` : ''}`);
     io.observe(p.div);
   });
   $('count').textContent = `${pages.length} page${pages.length === 1 ? '' : 's'}`;
@@ -546,6 +550,288 @@ function notice({ text, yes, no, onYes }) {
   $('noticeNo').onclick = () => { $('notice').hidden = true; };
   $('notice').hidden = false;
 }
+
+/* ---------- merging PDFs ---------- */
+
+// In the Pages and file panel: add PDFs, put them in order (drag the grip, or focus it and use ↑ ↓), and merge.
+// The open PDF, with its changes, is one of the items until it's removed. The merged file is a new file, saved
+// where you choose; the open PDF isn't changed.
+let mergeItems = [{ current: true }];
+
+const GRIP = '<svg viewBox="0 0 12 14" aria-hidden="true"><g fill="currentColor"><circle cx="4" cy="3" r="1.2"/><circle cx="8" cy="3" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="8" cy="7" r="1.2"/><circle cx="4" cy="11" r="1.2"/><circle cx="8" cy="11" r="1.2"/></g></svg>';
+const CROSS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+
+function drawMerge(focus = null) {
+  const list = $('mergeList');
+  list.replaceChildren(...mergeItems.map((it, k) => {
+    const label = it.current ? 'This PDF' : it.name;
+    const grip = el2('button', { type: 'button', class: 'grip', title: 'Drag to reorder (or ↑ ↓)', 'aria-label': `Move ${label}: ↑ or ↓` });
+    grip.innerHTML = GRIP;
+    const rm = el2('button', { type: 'button', class: 'rm', title: 'Remove from the merge', 'aria-label': `Remove ${label}` });
+    rm.innerHTML = CROSS;
+    rm.onclick = () => { mergeItems.splice(k, 1); drawMerge(); };
+    const pagesN = it.current ? entries.length : it.pages;
+    const count = it.error ? it.error : pagesN == null ? '…' : `${pagesN} page${pagesN === 1 ? '' : 's'}`;
+    const li = el2('li', { class: (it.current ? 'current' : '') + (it.error ? ' bad' : '') },
+      grip, el2('span', { class: 'name', title: it.current ? `${name}, with your changes` : label }, it.current ? el2('b', {}, 'This PDF') : label),
+      el2('span', { class: 'count' }, count), rm);
+    grip.addEventListener('keydown', e => {
+      const d = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const j = k + d;
+      if (j < 0 || j >= mergeItems.length) return;
+      [mergeItems[k], mergeItems[j]] = [mergeItems[j], mergeItems[k]];
+      drawMerge(j);
+    });
+    grip.addEventListener('pointerdown', e => dragMerge(e, li, k));
+    return li;
+  }));
+  const ok = mergeItems.filter(it => !it.error).length;
+  $('merge').disabled = ok < 2;
+  $('merge').textContent = ok >= 2 ? `Merge ${ok} PDFs and save…` : 'Merge and save…';
+  if (focus != null) list.children[focus]?.querySelector('.grip').focus();
+}
+
+function dragMerge(e, li, from) {   // drag a row up or down; the others make room as it passes them
+  if (e.button) return;
+  e.preventDefault();
+  const list = $('mergeList'), rows = [...list.children], y0 = e.clientY;
+  const h = li.getBoundingClientRect().height + 4;
+  let to = from;
+  li.classList.add('dragging');
+  li.querySelector('.grip').setPointerCapture(e.pointerId);
+  const onMove = ev => {
+    const dy = ev.clientY - y0;
+    to = clamp(from + Math.round(dy / h), 0, rows.length - 1);
+    li.style.transform = `translateY(${dy}px)`;
+    rows.forEach((r, k) => {
+      if (r === li) return;
+      const shift = from < to && k > from && k <= to ? -h : from > to && k < from && k >= to ? h : 0;
+      r.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+  };
+  const onUp = () => {
+    removeEventListener('pointermove', onMove);
+    removeEventListener('pointerup', onUp);
+    removeEventListener('pointercancel', onUp);
+    const [it] = mergeItems.splice(from, 1);
+    mergeItems.splice(to, 0, it);
+    drawMerge(to);
+  };
+  addEventListener('pointermove', onMove);
+  addEventListener('pointerup', onUp);
+  addEventListener('pointercancel', onUp);
+}
+
+async function addMergeFiles(files) {
+  const pdfs = [...files].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
+  if (!pdfs.length) return say('Only PDF files can be merged.');
+  const items = pdfs.map(file => ({ file, name: file.name, pages: null }));
+  mergeItems.push(...items);
+  drawMerge();
+  for (const it of items) {   // count their pages (and find any that can't be read) without holding them open
+    try {
+      const pdf = await pdfjs.getDocument({ data: new Uint8Array(await it.file.arrayBuffer()), ...PDFJS_OPTS }).promise;
+      it.pages = pdf.numPages;
+      pdf.loadingTask.destroy().catch(() => {});
+    } catch (e) {
+      it.error = e.name === 'PasswordException' ? 'password-protected' : 'can’t be read';
+    }
+    drawMerge();
+  }
+}
+
+async function merge() {
+  const items = mergeItems.filter(it => !it.error);
+  if (items.length < 2) return;
+  finishEdit();
+  const base = name.replace(/\.pdf$/i, '');
+  const suggestedName = `${base} (merged).pdf`;
+  let handle = null;
+  if (window.showSaveFilePicker) {   // ask where first, while the click still counts as a user action
+    try {
+      handle = await showSaveFilePicker({ suggestedName, id: folderId(), types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] });
+    } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  $('panel').hidePopover();
+  say('Merging…', true);
+  try {
+    const { PDFDocument } = await lib();
+    let out = null, total = 0;
+    for (const [k, it] of items.entries()) {
+      say(`Merging… ${k + 1} of ${items.length}`, true);
+      const bytes = it.current ? await build(entries) : new Uint8Array(await it.file.arrayBuffer());
+      let src;
+      try { src = await PDFDocument.load(bytes, { updateMetadata: false }); }
+      catch (e) { throw new Error(/encrypt/i.test(e.message) ? `“${it.current ? name : it.name}” is encrypted, so it can’t be merged.` : `“${it.current ? name : it.name}” couldn’t be read.`); }
+      total += src.getPageCount();
+      if (!out) { out = src; continue; }   // the first file is the base, so its bookmarks and details are kept
+      for (const pg of await out.copyPages(src, src.getPageIndices())) out.addPage(pg);
+    }
+    const data = await out.save({ useObjectStreams: true });
+    if (handle) {
+      const w = await handle.createWritable();
+      await w.write(data);
+      await w.close();
+      say(`Saved the merged PDF, “${handle.name}”: ${total} pages from ${items.length} files.`);
+    } else {
+      download(data, suggestedName);
+      say(`Saved the merged PDF to your downloads: ${total} pages from ${items.length} files.`);
+    }
+  } catch (e) {
+    say(e.message.startsWith('“') ? e.message : 'Could not merge: ' + e.message, true);
+  }
+}
+
+$('mergeAdd').onclick = () => { $('mergeFiles').value = ''; $('mergeFiles').click(); };
+$('mergeFiles').onchange = () => addMergeFiles($('mergeFiles').files);
+$('merge').onclick = merge;
+$('panel').addEventListener('dragover', e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); $('panel').classList.add('dropping'); } });
+$('panel').addEventListener('dragleave', e => { if (!$('panel').contains(e.relatedTarget)) $('panel').classList.remove('dropping'); });
+$('panel').addEventListener('drop', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  $('panel').classList.remove('dropping');
+  addMergeFiles(e.dataTransfer.files);
+});
+
+/* ---------- moving a page ---------- */
+
+// Right-click a page, Move page: the page lifts, a small copy of it follows the pointer, and a line shows where it
+// would go. Click (or release, after dragging) to put it there. Arrow keys move the line too, Enter drops, Esc cancels.
+// The window scrolls when the pointer nears its top or bottom edge. One undo puts it back.
+let moving = null;   // { p, from, slot, ghost, line, x, y, scroll }
+
+function startMove(p) {
+  if (pages.length < 2) return say('There’s only one page, so there’s nowhere to move it.');
+  finishEdit();
+  select(null);
+  const from = pages.indexOf(p);
+  const ghost = el2('div', { class: 'ghost', 'aria-hidden': 'true' });
+  const r = p.div.getBoundingClientRect(), W = 96, H = Math.round(W * r.height / r.width);
+  const c = Object.assign(document.createElement('canvas'), { width: W * 2, height: H * 2 });
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  if (p.canvas) g.drawImage(p.canvas, 0, 0, c.width, c.height);
+  ghost.append(c, el2('span', {}, `Page ${from + 1}`));
+  const line = el2('div', { class: 'dropline', 'aria-hidden': 'true' });
+  document.body.append(ghost, line);
+  moving = { p, from, slot: from, ghost, line, x: r.left + r.width / 2, y: Math.max(r.top, 80) + 40, scroll: 0, key: false };
+  p.div.classList.add('lifted');
+  document.body.classList.add('moving');
+  placeGhost();
+  say(`Moving page ${from + 1}: point between two pages and click to put it there. Arrow keys and Enter work too; Esc cancels.`, true);
+}
+
+// The gaps a page can go into: before each page, and after the last. In two-page view the gaps sit between
+// the pages of a row (and at its ends); otherwise between one page and the next.
+function slots() {
+  const out = [], col = spread;
+  pages.forEach((q, k) => {
+    const r = q.div.getBoundingClientRect();
+    out.push(col ? { k, x: r.left - GAP / 2, y: r.top + r.height / 2, len: r.height, vertical: true, r }
+      : { k, x: r.left + r.width / 2, y: r.top - GAP / 2, len: r.width, vertical: false, r });
+  });
+  const r = pages.at(-1).div.getBoundingClientRect();
+  out.push(col ? { k: pages.length, x: r.right + GAP / 2, y: r.top + r.height / 2, len: r.height, vertical: true, r }
+    : { k: pages.length, x: r.left + r.width / 2, y: r.bottom + GAP / 2, len: r.width, vertical: false, r });
+  return out;
+}
+
+function placeGhost() {
+  const m = moving;
+  if (!m) return;
+  m.ghost.style.transform = `translate(${m.x + 14}px, ${m.y + 14}px)`;
+  const all = slots();
+  if (!m.key) {   // the gap nearest the pointer (rows count before columns, so it doesn't jump across in two-page view)
+    let best = null, d = Infinity;
+    for (const sl of all) {
+      const dd = sl.vertical ? Math.hypot(m.x - sl.x, Math.max(0, Math.abs(m.y - sl.y) - sl.len / 2) * 4)
+        : Math.hypot(Math.max(0, Math.abs(m.x - sl.x) - sl.len / 2) * 4, m.y - sl.y);
+      if (dd < d) { d = dd; best = sl; }
+    }
+    m.slot = best.k;
+  }
+  const sl = all[m.slot], L = m.line.style;
+  const len = sl.vertical ? sl.len : sl.len + 24;
+  L.width = sl.vertical ? '4px' : len + 'px';
+  L.height = sl.vertical ? len + 'px' : '4px';
+  L.transform = `translate(${sl.vertical ? sl.x - 2 : sl.x - len / 2}px, ${sl.vertical ? sl.y - len / 2 : sl.y - 2}px)`;
+  const same = m.slot === m.from || m.slot === m.from + 1;
+  m.line.classList.toggle('same', same);
+  if (m.key) m.ghost.style.transform = `translate(${sl.vertical ? sl.x + 14 : sl.x + Math.min(sl.len / 2, 160) + 14}px, ${sl.y + 10}px)`;   // beside the line
+  m.line.classList.toggle('v', sl.vertical);
+}
+
+function moveGlide() {   // scroll while the pointer is near the top or bottom edge
+  const m = moving;
+  if (!m || m.key) return;
+  const top = header.getBoundingClientRect().bottom, edge = 70;
+  const v = m.y < top + edge ? -(top + edge - m.y) : m.y > innerHeight - edge ? m.y - (innerHeight - edge) : 0;
+  if (v) { scrollBy(0, Math.sign(v) * Math.min(28, Math.abs(v) / 2.5 + 2)); placeGhost(); }
+  m.scroll = v ? requestAnimationFrame(moveGlide) : 0;
+}
+
+function endMove(drop) {
+  const m = moving;
+  if (!m) return;
+  moving = null;
+  cancelAnimationFrame(m.scroll);
+  m.ghost.remove();
+  m.line.remove();
+  m.p.div.classList.remove('lifted');
+  document.body.classList.remove('moving');
+  if (!drop || m.slot === m.from || m.slot === m.from + 1) return say(drop ? 'The page stays where it was.' : 'Move cancelled.');
+  const e = entries[m.from], to = m.slot > m.from ? m.slot - 1 : m.slot;
+  changePages(() => { entries.splice(m.from, 1); entries.splice(to, 0, e); });
+  const where = to === 0 ? 'to the start: it’s now page 1' : to === entries.length - 1 ? `to the end: it’s now page ${to + 1}` : `: it’s now page ${to + 1}`;
+  views.get(e.id)?.div.scrollIntoView({ block: 'nearest' });
+  showPage();
+  say(`Moved page ${m.from + 1}${where.startsWith(':') ? '' : ' '}${where}.`, { action: { label: 'Undo', fn: undo } });
+}
+
+addEventListener('pointermove', e => {
+  if (!moving) return;
+  Object.assign(moving, { x: e.clientX, y: e.clientY, key: false });
+  placeGhost();
+  if (!moving.scroll) moveGlide();
+}, true);
+addEventListener('pointerdown', e => {
+  if (!moving || e.target.closest('#toast')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  moving.down = { x: e.clientX, y: e.clientY };
+}, true);
+addEventListener('pointerup', e => {
+  if (!moving?.down) return;
+  e.preventDefault();
+  e.stopPropagation();
+  endMove(true);
+  swallow = true;   // the click that follows this release isn't for the page underneath
+  setTimeout(() => { swallow = false; }, 400);
+}, true);
+let swallow = false;
+addEventListener('click', e => { if (swallow) { swallow = false; e.preventDefault(); e.stopPropagation(); } }, true);
+addEventListener('keydown', e => {
+  if (!moving) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, Home: -Infinity, End: Infinity }[e.key];
+  if (e.key === 'Escape') return endMove(false);
+  if (e.key === 'Enter' || e.key === ' ') return endMove(true);
+  if (step === undefined) return;
+  moving.key = true;
+  moving.slot = clamp(moving.slot + step, 0, pages.length);
+  const sl = slots()[moving.slot];
+  const top = header.getBoundingClientRect().bottom;
+  if (sl.y < top + 40 || sl.y > innerHeight - 40) scrollBy({ top: sl.y - (top + innerHeight) / 2 });
+  if (sl.x < 20 || sl.x > innerWidth - 20) scrollBy({ left: sl.x - innerWidth / 2 });
+  placeGhost();
+}, true);
+addEventListener('scroll', () => moving && placeGhost(), { passive: true });
 
 /* ---------- find ---------- */
 
@@ -1163,11 +1449,63 @@ function addImage(at = targetIndex()) {
     const f = pick.files[0];
     if (!f) return;
     const rd = new FileReader();
-    rd.onload = () => placeImage(pages[Math.min(at, pages.length - 1)], rd.result);
+    rd.onload = () => chooseImage(rd.result, Math.min(at, pages.length - 1));
     rd.onerror = () => say('That file couldn’t be read.');
     rd.readAsDataURL(f);
   };
   pick.click();
+}
+
+// A picture can go onto the page, where it can be moved and resized like a shape, or onto a new page of its own
+// after it, as wide as that page and as tall as the picture needs (like a note).
+function imageActions(src, at) {
+  return [
+    [`Add to page ${at + 1}`, () => placeImage(pages[at], src)],
+    [`Add as a new page after page ${at + 1}`, () => imagePage(at, src)],
+  ];
+}
+
+function chooseImage(src, at) {
+  const box = $('magic');
+  const preview = Object.assign(el2('img', { alt: 'The picture you chose' }), { src });
+  box.dataset.card = 'image';
+  showCard(box, $('addImage'), 'Add an image', 'Where should it go?', preview, imageActions(src, at));
+}
+
+// The small card under a toolbar button, with a preview and a column of choices (Magic paste, Add image).
+function showCard(box, anchor, title, kind, preview, acts) {
+  const buttons = acts.map(([label, fn], i) => {
+    const b = el2('button', { type: 'button', class: i ? '' : 'primary' }, label);
+    b.onclick = () => { box.hidePopover(); fn(); };
+    return b;
+  });
+  box.replaceChildren(el2('h2', { id: 'magicTitle' }, title), el2('p', { class: 'kind' }, kind), ...(preview ? [preview] : []), el2('div', { class: 'acts' }, ...buttons));
+  if (!box.matches(':popover-open')) box.showPopover();
+  const r = anchor.getBoundingClientRect();
+  box.style.top = r.bottom + 8 + 'px';
+  box.style.left = Math.max(12, Math.min(r.left, innerWidth - box.offsetWidth - 12)) + 'px';
+  buttons[0]?.focus();
+}
+
+async function imagePage(after, src) {
+  let im;
+  try { im = await prepImage(src); } catch { return say('That file couldn’t be read as a picture.'); }
+  const ref = pages[after], { width } = ref.page.getViewport({ scale: 1, rotation: rotationOf(ref) });
+  let W = Math.round(width), H = Math.max(1, Math.round(W * im.h / im.w));
+  const MAXH = 14400;   // the tallest page PDF allows; a very long picture is narrowed to fit, in the middle
+  const w = H > MAXH ? W * MAXH / H : W;
+  H = Math.min(H, MAXH);
+  const { PDFDocument } = await lib();
+  const d = await PDFDocument.create();
+  const pic = im.mime === 'image/jpeg' ? await d.embedJpg(dataBytes(im.src)) : await d.embedPng(dataBytes(im.src));
+  d.addPage([W, H]).drawImage(pic, { x: (W - w) / 2, y: 0, width: w, height: H });
+  const key = 'pic' + nextId++;
+  await loadDoc(key, await d.save());
+  const added = { id: nextId++, doc: key, i: 0, rot: 0 };
+  changePages(() => { entries.splice(after + 1, 0, added); });
+  views.get(added.id)?.div.scrollIntoView({ block: 'start' });
+  showPage();
+  say(`Added the image as a new page after page ${after + 1}.`, { action: { label: 'Undo', fn: undo } });
 }
 
 // Put it in the middle of the part of the page in view, scaled down to fit the page if it's big.
@@ -1265,7 +1603,8 @@ function looksLikeMarkdown(t) {
 async function magicPaste() {
   if (!pages.length) return;
   const box = $('magic'), at = targetIndex(), p = pages[at];
-  if (box.matches(':popover-open')) return box.hidePopover();
+  if (box.matches(':popover-open') && box.dataset.card === 'magic') return box.hidePopover();
+  box.dataset.card = 'magic';
   box.replaceChildren(el2('p', { class: 'kind' }, 'Looking at your clipboard…'));
   box.showPopover();
   const r = $('magicBtn').getBoundingClientRect();
@@ -1279,7 +1618,7 @@ async function magicPaste() {
   const md = !!t && looksLikeMarkdown(t);
   const go = fn => () => { box.hidePopover(); fn(); };
   const acts = [];
-  if (img) acts.push([`Paste image on page ${at + 1}`, go(() => placeImage(p, img))]);
+  if (img) acts.push(...imageActions(img, at).map(([label, fn]) => [label, go(fn)]));
   if (t) {
     const note = [`Add as a note after page ${at + 1}`, go(() => addNote(at, t))];
     const tb = [`Add as a text box on page ${at + 1}`, go(() => pasteTextBox(p, t))];
@@ -1984,6 +2323,7 @@ const ICONS = {
   left: '<svg viewBox="0 0 16 16"><path d="M3.5 6.5A5 5 0 1 1 4 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M1.8 3.2l1.7 3.3 3.4-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   right: '<svg viewBox="0 0 16 16"><path d="M12.5 6.5A5 5 0 1 0 12 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M14.2 3.2l-1.7 3.3-3.4-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   note: '<svg viewBox="0 0 16 16"><path d="M3 1.8h6.5l3.5 3.5v8.9H3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 7.2v5M5.5 9.7h5" stroke="currentColor" stroke-width="1.4"/></svg>',
+  move: '<svg viewBox="0 0 16 16"><path d="M8 1.8v12.4M5.5 4.3 8 1.8l2.5 2.5M5.5 11.7 8 14.2l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 8h3M10.5 8h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   trash: '<svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
@@ -2080,6 +2420,7 @@ function togglePanel(id, field) {
   el.style.top = header.getBoundingClientRect().bottom + 6 + 'px';
   if (id === 'panel') {   // set up before showing, so nothing changes the fields while you type
     $('panelMsg').textContent = '';
+    drawMerge();
   }
   el.showPopover();
   if (field) $(field).select();
@@ -2166,6 +2507,7 @@ const MENU = [
   ['left', 'Rotate left', '[', p => rotatePages(new Set([p.id]), -90)],
   ['right', 'Rotate right', ']', p => rotatePages(new Set([p.id]), 90)],
   ['note', 'Add note after this page', 'N', p => addNote(pages.indexOf(p))],
+  ['move', 'Move page', 'M', p => startMove(p)],
   null,
   ['trash', 'Delete page', 'Shift+Del', p => deletePages(new Set([p.id]))],
 ];
@@ -2180,7 +2522,7 @@ $('menu').append(...MENU.map(m => {
 function openMenu(p, x, y) {
   const m = $('menu');
   menuPage = p;
-  $('menuTitle').textContent = `Page ${pages.indexOf(p) + 1} of ${pages.length}${p.e.doc === 'main' ? '' : ' · note'}`;
+  $('menuTitle').textContent = `Page ${pages.indexOf(p) + 1} of ${pages.length}${kindOf(p.e) ? ' · ' + kindOf(p.e) : ''}`;
   m.querySelector('.danger').disabled = pages.length < 2;
   m.style.left = m.style.top = '0px';
   m.showPopover();
@@ -2247,6 +2589,7 @@ const KEYS = {
   'd': () => setSpread(!spread),
   'n': () => addNote(targetIndex() >= 0 ? targetIndex() : undefined),
   'p': () => togglePanel('panel', 'range'),
+  'm': () => pages.length && startMove(pages[targetIndex()]),
   '/': () => openFind(),
   '?': () => togglePanel('keys'),
   '[': () => thisPage() && rotatePages(thisPage(), -90), ']': () => thisPage() && rotatePages(thisPage(), 90),
