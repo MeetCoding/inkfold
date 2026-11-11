@@ -1,7 +1,9 @@
 # Publishes GitHub releases for Inkfold.
+# • "Run workflow" on the Actions tab publishes every version that has no release yet, oldest first.
+#   Each version's commit is found from the history (the last commit whose manifest has that version),
+#   and its v<version> tag is created with the release.
 # • Pushing a version tag (v1.9.1, …) publishes that version.
-# • "Run workflow" on the Actions tab publishes every v* tag that has no release yet (oldest first).
-# Each release gets the extension zip built from that tag, and its notes from CHANGELOG.md.
+# Each release gets the extension zip built from that commit, and its notes from CHANGELOG.md.
 name: Release
 
 on:
@@ -26,18 +28,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # version -> commit: an existing tag, or else the last commit on main with that version
+          declare -A at
+          for c in $(git rev-list --reverse HEAD); do
+            v=$(git show "$c:extension/manifest.json" 2>/dev/null | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -1)
+            [ -n "$v" ] && at[$v]=$c
+          done
+          for t in $(git tag -l 'v*'); do at[${t#v}]=$(git rev-list -n1 "$t"); done
           if [ "${{ github.event_name }}" = "push" ]; then
             tags="${GITHUB_REF_NAME}"
           else
-            tags=$(git tag -l 'v*' | sort -V)
+            tags=$(printf 'v%s\n' "${!at[@]}" | sort -V)
           fi
-          newest=$(git tag -l 'v*' | sort -V | tail -1)
+          newest=$(printf 'v%s\n' "${!at[@]}" | sort -V | tail -1)
           for tag in $tags; do
             v="${tag#v}"
             if gh release view "$tag" >/dev/null 2>&1; then echo "$tag: already released"; continue; fi
             # The extension, exactly as it was at this tag
             rm -rf build && mkdir build
-            git archive "$tag" extension | tar -x -C build
+            git archive "${at[$v]}" extension | tar -x -C build
             (cd build/extension && zip -qr -X "../../inkfold-$v.zip" . -x '.*' -x '*/.*')
             # Title and notes from this version's CHANGELOG section ("## 1.9.0: title")
             heading=$(grep -m1 -E "^## ${v//./\\.}(:|$)" CHANGELOG.md || true)
@@ -51,6 +60,6 @@ jobs:
             { echo; echo '---'; echo;
               echo "**Install:** download \`inkfold-$v.zip\`, unzip it, open \`chrome://extensions\`, turn on **Developer mode**, click **Load unpacked** and choose the unzipped folder. The same zip is what goes to the Chrome Web Store."; } >> notes.md
             latest=false; [ "$tag" = "$newest" ] && latest=true
-            gh release create "$tag" "inkfold-$v.zip" --title "$title" --notes-file notes.md --latest=$latest
+            gh release create "$tag" "inkfold-$v.zip" --target "${at[$v]}" --title "$title" --notes-file notes.md --latest=$latest
             echo "$tag: released"
           done
