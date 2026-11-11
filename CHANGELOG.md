@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.11.4: fixes
+
+- **Merge PDFs list**: rows are drawn properly again: the grip, number, name and page count sit on one line, and This PDF has its blue row. (Their styles had been dropped by mistake in 2.11.2.) The panel also scrolls again when it's taller than the window.
+- **Split or extract**: the two tabs are now two buttons, **Split into files** (also Enter in the range box) and **Save as one PDF**. The Split button no longer shows "(Enter)".
+- A single page split out is named `notes (page 3).pdf` rather than `notes (pages 3).pdf`.
+
 ## 2.11.3: fixes
 
 - **Moving a page**: a clear marker now shows where the page will land: the pages either side move apart and a blue "Page 2 goes here" label sits in the gap. (The gap was too small to notice before, and the marker was placed against the pages' moving positions, so it could sit off-centre.)

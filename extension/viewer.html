@@ -131,12 +131,11 @@
   <hr>
   <label for="splitRanges">Split or extract pages</label>
   <input id="splitRanges" placeholder="e.g. 1-3, 4-8, 9-end" autocomplete="off" spellcheck="false">
-  <div class="seg splitmode" role="radiogroup" aria-label="Save the ranges as">
-    <button type="button" role="radio" data-mode="separate" aria-checked="true">A file for each range</button>
-    <button type="button" role="radio" data-mode="one" aria-checked="false">One PDF</button>
+  <div class="row two">
+    <button id="split" class="primary" title="Save each range as its own PDF (Enter)">Split into files</button>
+    <button id="splitOne" title="Save all the ranges, in the order typed, as one PDF">Save as one PDF</button>
   </div>
-  <p class="help" id="splitHelp"></p>
-  <div class="row"><button id="split" class="primary">Split <span class="key">(Enter)</span></button></div>
+  <p class="help">A PDF for each range, or all of them in one PDF, in the order typed. Highlights, shapes and notes come along.</p>
   <hr>
   <div class="mergehead"><label id="mergeLabel" for="mergeAdd">Merge PDFs</label><button id="mergeAdd" class="mini" type="button">Add PDFs</button></div>
   <input type="file" id="mergeFiles" accept="application/pdf,.pdf" multiple hidden>

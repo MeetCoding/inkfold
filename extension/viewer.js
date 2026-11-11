@@ -1345,35 +1345,19 @@ function rangeIds() {
   }
 }
 
-// Split: each range as a file of its own, or all of them, in the order typed, as one PDF.
-let splitMode = store.get('splitMode', 'separate');
-function setSplitMode(mode) {
-  splitMode = mode;
-  store.set('splitMode', mode);
-  for (const b of document.querySelectorAll('.splitmode button')) b.setAttribute('aria-checked', b.dataset.mode === mode);
-  $('splitHelp').textContent = mode === 'one'
-    ? 'The ranges go into one new PDF, in the order you typed them, keeping your highlights, shapes and notes.'
-    : 'Each range becomes its own file, keeping your highlights, shapes and notes. A save dialog opens for each, already named.';
-  $('split').firstChild.textContent = mode === 'one' ? 'Save as one PDF ' : 'Split ';
-}
-document.querySelectorAll('.splitmode button').forEach(b => {
-  b.addEventListener('mousedown', e => e.preventDefault());   // keep the focus in the range box
-  b.onclick = () => setSplitMode(b.dataset.mode);
-});
-setSplitMode(splitMode);
-
-async function split() {
+// Split: each range as a file of its own (mode 'separate'), or all of them, in the order typed, as one PDF ('one').
+async function split(mode = 'separate') {
   let groups;
   try { groups = parseRanges($('splitRanges').value, entries.length); $('panelMsg').textContent = ''; }
   catch (e) { $('panelMsg').textContent = e.message; return; }
   finishEdit();
   const base = name.replace(/\.pdf$/i, '');
-  const one = splitMode === 'one';
+  const one = mode === 'one';
   let label = groups.map(g => g.label).join(', ');
   if (label.length > 60) label = label.slice(0, 57).replace(/,?\s*[^,]*$/, '') + ' …';
   const parts = one
-    ? [{ g: { idx: groups.flatMap(g => g.idx) }, file: `${base} (pages ${label}).pdf` }]   // every range, in order, in one file
-    : groups.map(g => ({ g, file: `${base} (pages ${g.label}).pdf` }));
+    ? [{ g: { idx: groups.flatMap(g => g.idx) }, file: `${base} (${/^\d+$/.test(label) ? 'page' : 'pages'} ${label}).pdf` }]   // every range, in order, in one file
+    : groups.map(g => ({ g, file: `${base} (${/^\d+$/.test(g.label) ? 'page' : 'pages'} ${g.label}).pdf` }));
   $('panel').hidePopover();
   // Each part gets its own save dialog, named and in the same folder as the last one, so it's mostly just Enter.
   // (A folder picker would ask only once, but Chrome won't let a page save straight into Downloads, Documents or
@@ -2612,7 +2596,8 @@ const rangeDelete = () => {
 $('rotL').onclick = () => rangeRotate(-90);
 $('rotR').onclick = () => rangeRotate(90);
 $('delPages').onclick = rangeDelete;
-$('split').onclick = split;
+$('split').onclick = () => split('separate');
+$('splitOne').onclick = () => split('one');
 $('range').onkeydown = e => {
   if (e.key === '[' || e.key === ']') { e.preventDefault(); rangeRotate(e.key === '[' ? -90 : 90); }
   else if (e.key === 'Delete' && e.shiftKey) { e.preventDefault(); rangeDelete(); }
