@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.8.0: smarter undo and a new zoom control
+
+- **Undo** and **Redo** are greyed out when there's nothing to undo or redo.
+- The zoom drop-down is replaced by a capsule (− 125% +) that opens a zoom card: **Fit width** and **Fit page** with little previews, a large readout with a zoom slider (25% to 500%, snapping gently to the presets), and one-tap preset chips. The capsule shows a WIDTH or PAGE tag while a fit mode is on.
+
 ## 2.7.0: save over the original
 
 - One **Save** button (Ctrl+S) instead of "Save as". Chrome's save dialog opens with the original file's name; confirm Chrome's "replace" prompt to write over the original, every time. Pick another name to keep it and save a copy.

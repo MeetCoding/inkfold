@@ -110,6 +110,7 @@ async function openPdf(buf, fileName) {
   io.disconnect();
   views.clear();
   [name, entries, shapes, history, future, sel, dirty] = [fileName, [], [], [], [], null, false];
+  syncUndo();
   ocrText.clear();
   ocrBusy.clear();
   showOcr(null);
@@ -506,10 +507,57 @@ function setZoom(z, mode = null, lazy = false) {
   }, mode === 'page' && !lazy);
   settle(lazy ? 250 : 0);
   store.set('fit', mode ?? 'auto');
-  const box = $('zoom'), preset = ZOOMS.find(v => Math.abs(v - zoom) < 1e-3);
-  if (mode === 'width' || mode === 'page') box.value = mode;
-  else if (preset) box.value = String(preset);
-  else { $('custom').textContent = Math.round(zoom * 100) + '%'; box.value = 'custom'; }
+  syncZoomUi();
+}
+
+// The zoom control: − [ 125% ⌄ ] + in the toolbar, and a card with the fit modes, a dial and presets.
+const Z_MIN = 0.25, Z_MAX = 5, zToRange = z => Math.round(1000 * Math.log(z / Z_MIN) / Math.log(Z_MAX / Z_MIN));
+const rangeToZ = v => Z_MIN * (Z_MAX / Z_MIN) ** (v / 1000);
+function syncZoomUi() {
+  const pct = Math.round(zoom * 100);
+  $('zoomVal').textContent = pct + '%';
+  $('zoomMode').textContent = fit === 'width' ? 'Width' : fit === 'page' ? 'Page' : '';
+  $('zoom').dataset.fit = fit === 'width' || fit === 'page' ? fit : '';
+  $('zoomBig').firstChild.textContent = pct;
+  const r = $('zoomRange');
+  if (document.activeElement !== r) r.value = zToRange(clamp(zoom, Z_MIN, Z_MAX));
+  r.style.setProperty('--at', r.value / 10 + '%');
+  for (const b of $('zoomPop').querySelectorAll('[data-fit]')) b.setAttribute('aria-pressed', fit === b.dataset.fit);
+  for (const b of $('zoomPop').querySelectorAll('[data-z]')) b.setAttribute('aria-pressed', !fit?.match(/width|page/) && Math.abs(+b.dataset.z - zoom) < 1e-3);
+}
+function buildZoomPop() {
+  const chips = $('zoomPop').querySelector('.chips'), ticks = $('zoomPop').querySelector('.ticks');
+  for (const z of ZOOMS) {
+    const b = document.createElement('button');
+    Object.assign(b.dataset, { z });
+    b.setAttribute('aria-pressed', 'false');
+    if (z === 1) b.title = 'Actual size (Ctrl+0)';
+    b.textContent = Math.round(z * 100) + '%';
+    b.onclick = () => setZoom(z);
+    chips.append(b);
+    const t = document.createElement('i');
+    t.style.left = zToRange(z) / 10 + '%';
+    if (z === 1) t.className = 'one';
+    ticks.append(t);
+  }
+  for (const b of $('zoomPop').querySelectorAll('[data-fit]')) b.onclick = () => setZoom(fitZoom(b.dataset.fit), b.dataset.fit);
+  const r = $('zoomRange');
+  r.oninput = () => {
+    let z = rangeToZ(+r.value);
+    const near = ZOOMS.find(v => Math.abs(zToRange(v) - +r.value) < 12);   // a little snap to the presets
+    if (near) z = near;
+    setZoom(z, null, true);
+  };
+  r.onchange = () => { r.blur(); syncZoomUi(); };
+  const pop = $('zoomPop');
+  pop.addEventListener('beforetoggle', e => {
+    $('zoom').setAttribute('aria-expanded', e.newState === 'open');
+    if (e.newState !== 'open') return;
+    const a = $('zoom').parentElement.getBoundingClientRect();
+    pop.style.top = a.bottom + 8 + 'px';
+    pop.style.left = clamp(a.left + a.width / 2 - 152, 8, innerWidth - 312) + 'px';
+    syncZoomUi();
+  });
 }
 
 function relayout() {   // after pages were added, removed or rotated
@@ -1232,6 +1280,12 @@ function commit(before) {
   history.push(before);
   future = [];
   dirty = true;
+  syncUndo();
+}
+
+function syncUndo() {   // the buttons are greyed out when there's nothing to undo or redo
+  $('undo').disabled = !history.length;
+  $('redo').disabled = !future.length;
 }
 
 const kind = () => { const t = sel ? sel.type : tool; return t === 'highlight' || t === 'text' ? t : 'shape'; };
@@ -1301,12 +1355,14 @@ function undo() {
   if (!history.length) return say('Nothing to undo.');
   future.push(snapshot());
   restore(history.pop());
+  syncUndo();
 }
 
 function redo() {
   if (!future.length) return say('Nothing to redo.');
   history.push(snapshot());
   restore(future.pop());
+  syncUndo();
 }
 
 function setTool(t) {
@@ -1699,11 +1755,8 @@ $('undo').onclick = undo;
 $('redo').onclick = redo;
 $('zin').onclick = () => step(1);
 $('zout').onclick = () => step(-1);
-$('zoom').onchange = e => {
-  const v = e.target.value;
-  if (v === 'width' || v === 'page') setZoom(fitZoom(v), v);
-  else if (v !== 'custom') setZoom(+v);
-};
+buildZoomPop();
+syncUndo();
 $('spread').onclick = () => setSpread(!spread);
 $('full').onclick = toggleFull;
 

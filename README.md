@@ -70,6 +70,7 @@ Coming soon.
 | Add a note | Press <kbd>N</kbd> (or the note button, next to the picture button) and type the note. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. (For Markdown you copied, use **Magic paste**.) |
 | Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Split | In the Pages panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
+| Zoom | − / + step through the presets. Click the percentage for a card with Fit width, Fit page, a zoom slider and preset buttons. |
 | Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> opens Chrome's save dialog with the original file's name, so confirming Chrome's "replace" prompt writes over the original. Pick another name or folder to keep the original and save a copy. For a PDF opened straight from your computer, the dialog opens in that file's folder from the second save there on (Chrome gives extensions no way to find the folder before that). |
 
 ### Keyboard shortcuts
