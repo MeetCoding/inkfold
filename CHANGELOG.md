@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0
+
+- **Right-click a page** to rotate it, delete it, or add a note after it. The buttons that appeared when hovering over a page are gone; the page number still shows there. With text selected, or with Shift held, Chrome's own menu (Copy, Gemini and so on) appears as before. The Pages panel (P) is still there for ranges and splitting.
+- Opening a PDF, especially one from your computer, no longer flashes Chrome's viewer, an unstyled page or the "Open a PDF" screen first. Placeholder pages show until the document is ready.
+
 ## 1.6.0
 
 - PDFs on your computer now also open in Inkfold **inside their own tab**, keeping their `file://` address, so Gemini in Chrome can share them too. (Needs "Allow access to file URLs".)

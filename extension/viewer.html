@@ -79,7 +79,7 @@
 
 <div id="panel" class="pop" popover aria-labelledby="panelTitle">
   <h2 id="panelTitle">Pages <span id="count"></span></h2>
-  <label for="range">Rotate or delete pages</label>
+  <label for="range">Rotate or delete several pages</label>
   <input id="range" placeholder="e.g. 2-4, 7, 10-end" autocomplete="off" spellcheck="false">
   <div class="row">
     <button id="rotL" title="Rotate these pages left ([)">↺ Left <span class="key">([)</span></button>
@@ -92,6 +92,15 @@
   <p class="help">Each range becomes its own file, keeping your highlights, shapes and notes. You choose the folder.</p>
   <div class="row"><button id="split" class="primary">Split… <span class="key">(Enter)</span></button></div>
   <p id="panelMsg" role="alert"></p>
+</div>
+
+<div id="menu" popover="manual" role="menu" aria-labelledby="menuTitle">
+  <div id="menuTitle"></div>
+</div>
+
+<div id="opening" role="status" aria-label="Opening the PDF">
+  <div class="sk"></div>
+  <div class="sk"></div>
 </div>
 
 <div id="keys" class="pop" popover aria-labelledby="keysTitle">
@@ -115,7 +124,7 @@
       <dd><kbd>P</kbd> Pages panel</dd><dd><kbd>?</kbd> This list</dd>
     </dl>
   </div>
-  <p class="help">Page keys act on the page under the pointer, or else the one filling the window.</p>
+  <p class="help">Right-click a page for its own menu. Page keys act on the page under the pointer, or else the one filling the window.</p>
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>

@@ -19,7 +19,7 @@
 - **Rectangles and ellipses** to mark up figures, tables or anything else. Move and resize them any time.
 - **Markdown notes**: copy Markdown, press <kbd>N</kbd>, and a new page with your formatted note appears after the current one. Headings, lists, checkboxes, tables, code, quotes and links all work.
 - **LaTeX math** in notes: `$inline$`, `$$display$$`, `\(…\)`, `\[…\]` and `align`-style environments, drawn as sharp vector shapes.
-- **Page tools**: rotate or delete single pages or ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
+- **Page tools**: right-click a page to rotate or delete it, or work on ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
 - **Fit width, fit page and two-page view**, with smooth resizing even on long documents.
 - **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
 - **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
@@ -54,7 +54,7 @@ Coming soon.
 | Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Colour with <kbd>C</kbd>, thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>. |
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. <kbd>Del</kbd> removes it. |
 | Add a note | Copy Markdown, then press <kbd>N</kbd> (or **+ Note**). It's added after the page under your pointer. |
-| Change pages | Hover over a page for its own buttons, or press <kbd>P</kbd> for the Pages panel and type a range. |
+| Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Split | In the Pages panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
 | Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> saves a new copy wherever you choose. Your original file is never changed. |
 

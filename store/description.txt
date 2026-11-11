@@ -9,7 +9,7 @@ TURN MARKDOWN INTO NOTE PAGES
 Copy Markdown from your notes app, an AI chat or anywhere else, press N, and Inkfold adds a cleanly typeset note page right after the page you're reading. Headings, lists, checklists, tables, code, quotes and links are all supported, and so is LaTeX math ($inline$, $$display$$ and align-style environments), drawn as sharp vector graphics.
 
 ORGANISE PAGES
-• Rotate or delete single pages, or ranges like 2-4, 7, 10-end
+• Right-click any page to rotate or delete it, or work on ranges like 2-4, 7, 10-end
 • Split a PDF into several files in one step: 1-3, 4-8, 9-end
 • Everything can be undone
 

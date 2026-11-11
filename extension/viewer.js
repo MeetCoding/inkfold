@@ -128,6 +128,7 @@ async function openPdf(buf, fileName) {
 }
 
 function fail(text) {
+  document.body.classList.remove('opening');
   if (docs.has('main')) return say(text);
   $('hint').textContent = text;
 }
@@ -181,17 +182,13 @@ function makeView(e) {
   const div = document.createElement('div');
   const hl = el('svg', { class: 'hl', 'aria-hidden': 'true' });
   const svg = el('svg', { class: 'shapes', 'aria-hidden': 'true' });
-  const bar = document.createElement('div');
-  const p = div.p = { id: e.id, e, page: docs.get(e.doc).pages[e.i], div, hl, svg, bar, canvas: null, task: null, at: '', want: '', visible: false, text: null };
+  const num = document.createElement('span');
+  const p = div.p = { id: e.id, e, page: docs.get(e.doc).pages[e.i], div, hl, svg, num, canvas: null, task: null, at: '', want: '', visible: false, text: null };
   div.className = 'page';
   div.setAttribute('role', 'region');
-  bar.className = 'pagebar';
-  bar.innerHTML = `<span class="num"></span>
-    <button data-act="left" title="Rotate left ([)">${ICONS.left}</button>
-    <button data-act="right" title="Rotate right (])">${ICONS.right}</button>
-    <button data-act="note" title="Add a note page after this one, from the Markdown in your clipboard (N)">${ICONS.note}</button>
-    <button data-act="delete" title="Delete this page (Shift+Del)">${ICONS.trash}</button>`;
-  div.append(hl, svg, bar);
+  num.className = 'pagenum';
+  num.setAttribute('aria-hidden', 'true');
+  div.append(hl, svg, num);
   svg.addEventListener('pointerdown', ev => down(ev, p));
   div.addEventListener('mousedown', ev => pressPage(ev, p));
   views.set(e.id, p);
@@ -215,8 +212,8 @@ function layoutPages() {   // match the DOM to `entries`
   pages.forEach((p, k) => {
     const what = p.e.doc === 'main' ? 'Page' : 'Note page';
     p.div.setAttribute('aria-label', `${what} ${k + 1} of ${pages.length}`);
-    p.bar.querySelector('.num').textContent = `${k + 1}${p.e.doc === 'main' ? '' : ' · note'}`;
-    for (const b of p.bar.querySelectorAll('button')) b.setAttribute('aria-label', `${b.title} (page ${k + 1})`);
+    p.num.textContent = `${k + 1}${p.e.doc === 'main' ? '' : ' · note'}`;
+    p.div.setAttribute('aria-label', `Page ${k + 1}${p.e.doc === 'main' ? '' : ' (note)'}`);
     io.observe(p.div);
   });
   $('count').textContent = `${pages.length} page${pages.length === 1 ? '' : 's'}`;
@@ -600,7 +597,7 @@ function pressPage(e, p) {
       if (!p.div.querySelector('.textLayer span')) say('This page has no selectable text (it may be a scanned image), so it can’t be highlighted. Draw a rectangle (R) instead.', { long: true });
     });
   }
-  if (e.button || tool !== 'select' || e.target.closest('.shapes, .pagebar')) return;
+  if (e.button || tool !== 'select' || e.target.closest('.shapes')) return;
   const [x, y] = point(e, p);
   pick = shapes.findLast(s => s.page === p.id && s.type === 'highlight'
     && s.rects.some(([a, b, c, d]) => x >= a && x <= c && y >= b && y <= d)) ?? null;
@@ -993,13 +990,59 @@ $('range').onkeydown = e => {
 };
 $('splitRanges').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); split(); } };
 
-// Per-page buttons
-$('pages').addEventListener('click', e => {
-  const b = e.target.closest('.pagebar button');
-  if (!b) return;
-  const p = b.closest('.page').p, ids = new Set([p.id]);
-  ({ left: () => rotatePages(ids, -90), right: () => rotatePages(ids, 90), note: () => addNote(pages.indexOf(p)), delete: () => deletePages(ids) })[b.dataset.act]();
+// Right-click a page for its own menu. With text selected, or with Shift held, Chrome's own menu
+// (Copy, Search, Gemini…) shows instead.
+const MENU = [
+  ['left', 'Rotate left', '[', p => rotatePages(new Set([p.id]), -90)],
+  ['right', 'Rotate right', ']', p => rotatePages(new Set([p.id]), 90)],
+  ['note', 'Add note after this page', 'N', p => addNote(pages.indexOf(p))],
+  null,
+  ['trash', 'Delete page', 'Shift+Del', p => deletePages(new Set([p.id]))],
+];
+let menuPage = null;
+$('menu').append(...MENU.map(m => {
+  if (!m) return document.createElement('hr');
+  const b = el2('button', { type: 'button', role: 'menuitem', class: m[0] === 'trash' ? 'danger' : '' }, m[1], el2('span', { class: 'key' }, m[2]));
+  b.insertAdjacentHTML('afterbegin', ICONS[m[0]]);
+  b.onclick = () => { closeMenu(); if (pages.includes(menuPage)) m[3](menuPage); };
+  return b;
+}));
+function openMenu(p, x, y) {
+  const m = $('menu');
+  menuPage = p;
+  $('menuTitle').textContent = `Page ${pages.indexOf(p) + 1} of ${pages.length}${p.e.doc === 'main' ? '' : ' · note'}`;
+  m.querySelector('.danger').disabled = pages.length < 2;
+  m.style.left = m.style.top = '0px';
+  m.showPopover();
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+  m.querySelector('button').focus();
+}
+$('pages').addEventListener('contextmenu', e => {
+  const p = e.target.closest('.page')?.p;
+  if (!p || e.shiftKey) return;
+  const s = getSelection();
+  if (!s.isCollapsed && s.toString().trim()) return;
+  e.preventDefault();
+  let { clientX: x, clientY: y } = e;
+  if (!x && !y) { const r = p.div.getBoundingClientRect(); x = r.left + 24; y = Math.max(r.top, 60) + 24; }   // the menu key
+  openMenu(p, x, y);
 });
+function menuKey(e) {   // arrow keys move through the menu, even if focus has wandered off it
+  const items = [...$('menu').querySelectorAll('button:not(:disabled)')], i = items.indexOf(document.activeElement);
+  const to = { ArrowDown: i + 1, ArrowUp: i < 0 ? -1 : i - 1, Home: 0, End: -1 }[e.key];
+  if (to === undefined) return false;
+  e.preventDefault();
+  items.at(to % items.length).focus();
+  return true;
+}
+// The menu closes itself (a light-dismiss popover would close on the release of the very right-click that opened it).
+const closeMenu = () => $('menu').matches(':popover-open') && $('menu').hidePopover();
+addEventListener('pointerdown', e => { if (!$('menu').contains(e.target)) closeMenu(); }, true);
+addEventListener('scroll', closeMenu, { passive: true });
+addEventListener('resize', closeMenu);
+addEventListener('blur', closeMenu);
 // Page shortcuts act on the page under the pointer, or else the one filling most of the window.
 $('pages').addEventListener('pointerover', e => { hovered = e.target.closest('.page')?.p ?? hovered; });
 $('pages').addEventListener('pointerleave', () => { hovered = null; });
@@ -1045,6 +1088,13 @@ const CTRL_KEYS = {
 
 addEventListener('keydown', e => {
   if ($('dlg').open) return;
+  if ($('menu').matches(':popover-open')) {   // the menu's own shortcuts act on its page
+    const m = MENU.find(m => m && (m[2] === 'Shift+Del' ? e.key === 'Delete' && e.shiftKey : e.key.toLowerCase() === m[2].toLowerCase()));
+    if (m && !(m[0] === 'trash' && pages.length < 2)) { e.preventDefault(); $('menu').hidePopover(); return m[3](menuPage); }
+    if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
+    else menuKey(e);
+    return;
+  }
   const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
   const typing = e.target.matches('input:not([type="color"]), select, textarea');
   if (e.altKey || e.isComposing) return;
@@ -1090,4 +1140,7 @@ const at = location.href.indexOf('?src=');
 let src = at < 0 ? null : location.href.slice(at + 5);
 if (src && /^[a-z]+%3a/i.test(src)) src = decodeURIComponent(src);
 if (IN_PAGE) src = location.href;
-if (src) openUrl(src);
+if (src) {
+  document.body.classList.add('opening');
+  openUrl(src);
+}
