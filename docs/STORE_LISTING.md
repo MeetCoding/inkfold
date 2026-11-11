@@ -18,49 +18,15 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 
 **Language:** English
 
-**Description:**
+**Description:** paste [`store/description.txt`](../store/description.txt) as it is.
 
-```
-Inkfold turns Chrome into a fast, private PDF annotator. Open any PDF and start marking it up: no account, no uploads, nothing to configure.
-
-ANNOTATE
-• Highlighter that follows the lines of real text, in any colour
-• Rectangles and ellipses to call out figures, tables and anything else
-• Move, resize, recolour and delete annotations at any time
-• Undo and redo for everything
-
-ADD NOTES WITH MARKDOWN AND LATEX
-Copy some Markdown (from your notes app, an AI assistant or anywhere else), press N, and Inkfold adds a cleanly typeset note page after the page you're reading. Headings, lists, checklists, tables, code, quotes and links are supported, and so is LaTeX math: $inline$, $$display$$ and align-style environments, drawn as sharp vector graphics.
-
-ORGANISE PAGES
-• Rotate or delete single pages, or ranges like 2-4, 7, 10-end
-• Split a PDF into several files in one step: 1-3, 4-8, 9-end
-• Everything can be undone
-
-READ COMFORTABLY
-• Fit width, fit page and two-page view
-• Smooth even on long documents
-• Selectable, searchable text that works with Ctrl+F, screen readers and AI assistants in your browser
-
-KEYBOARD FIRST
-Every action has a shortcut, shown in brackets on its button. Press ? to see them all.
-
-WORKS EVERYWHERE YOUR PDF GOES
-Everything is saved as standard PDF annotations, so it shows up in Acrobat, Preview, Chrome's viewer and other apps, and stays editable when you reopen the file in Inkfold. Saving always creates a new copy; your original file is never changed.
-
-PRIVATE BY DESIGN
-Inkfold runs entirely in your browser. It has no servers, no analytics and no tracking, and your documents are never uploaded. It's open source: https://github.com/MeetCoding/inkfold
-
-Good to know
-• PDFs you open in Chrome open in Inkfold. To use Chrome's viewer instead, right-click the Inkfold icon and untick "Open every PDF with Inkfold".
-• For PDFs on your computer, turn on "Allow access to file URLs" in Inkfold's details page.
-```
-
-**Screenshots** (1280×800): `store/screenshot-1-annotate.png`, `screenshot-2-notes.png`, `screenshot-3-pages.png`, `screenshot-4-shortcuts.png`
+**Screenshots** (1280×800, captioned), in this order: `store/screenshot-1-annotate.png`, `screenshot-2-notes.png`, `screenshot-3-pages.png`, `screenshot-4-shortcuts.png`, `screenshot-5-private.png`
 
 **Small promo tile** (440×280): `store/promo-small-440x280.png`
 
 **Marquee promo tile** (1400×560): `store/promo-marquee-1400x560.png`
+
+**Promo video:** the store takes a YouTube link. Upload `store/inkfold-promo.mp4` (30 s, 1280×720, no sound) to YouTube as Public or Unlisted, and paste its URL.
 
 **Store icon** (128×128): `extension/icons/128.png`
 
