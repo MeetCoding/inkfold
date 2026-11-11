@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.0
+
+- **Page number** in the toolbar shows the page you're on and the total. Type a number and press Enter (or press <kbd>G</kbd>) to jump to that page.
+- The selected annotation gets its own **delete button** at its top-right corner. The delete button on the toolbar is gone; <kbd>Del</kbd> still works.
+- The Pages panel's range box starts empty, so its example (`e.g. 3, 5-7, 10-end`) shows that it takes a page, a range or several.
+- With a PDF open, **Open** (and <kbd>Ctrl</kbd>+<kbd>O</kbd>, and dropping a file) is no longer offered. Open another PDF in its own tab instead.
+
 ## 1.7.0
 
 - **Right-click a page** to rotate it, delete it, or add a note after it. The buttons that appeared when hovering over a page are gone; the page number still shows there. With text selected, or with Shift held, Chrome's own menu (Copy, Gemini and so on) appears as before. The Pages panel (P) is still there for ranges and splitting.

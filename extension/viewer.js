@@ -210,13 +210,12 @@ function layoutPages() {   // match the DOM to `entries`
   });
   $('pages').replaceChildren(...pages.map(p => p.div));
   pages.forEach((p, k) => {
-    const what = p.e.doc === 'main' ? 'Page' : 'Note page';
-    p.div.setAttribute('aria-label', `${what} ${k + 1} of ${pages.length}`);
     p.num.textContent = `${k + 1}${p.e.doc === 'main' ? '' : ' · note'}`;
     p.div.setAttribute('aria-label', `Page ${k + 1}${p.e.doc === 'main' ? '' : ' (note)'}`);
     io.observe(p.div);
   });
   $('count').textContent = `${pages.length} page${pages.length === 1 ? '' : 's'}`;
+  showPage();
 }
 
 function size(p) {
@@ -429,7 +428,7 @@ function parseRanges(text, n) {
     if (a < 1 || b > n || a > b) throw new Error(`“${raw.trim()}” is outside pages 1–${n}.`);
     groups.push({ label: a === b ? `${a}` : `${a}-${b}`, idx: Array.from({ length: b - a + 1 }, (_, k) => a - 1 + k) });
   }
-  if (!groups.length) throw new Error('Type the pages first, like 2-4, 7.');
+  if (!groups.length) throw new Error('Type the pages first: a page like 3, a range like 5-7, or several, like 3, 5-7, 10-end.');
   return groups;
 }
 
@@ -525,6 +524,22 @@ function paint(p) {
   });
   p.hl.replaceChildren(...under);
   p.svg.replaceChildren(...over);
+  p.div.querySelector('.delsel')?.remove();
+  if (sel?.page === p.id && shapes.includes(sel)) p.div.append(deleteButton(p));
+}
+
+// A small delete button just outside the selected annotation's top-right corner (inside it if there's no room).
+function deleteButton(p) {
+  const boxes = sel.type === 'highlight' ? sel.rects.map(r => view(p, r)) : [view(p, [sel.x1, sel.y1, sel.x2, sel.y2])];
+  const right = Math.max(...boxes.map(v => v.x + v.w)), top = Math.min(...boxes.map(v => v.y));
+  const W = p.div.clientWidth, S = 26;
+  const b = el2('button', { type: 'button', class: 'delsel', title: 'Delete this annotation (Del)', 'aria-label': 'Delete this annotation (Del)' });
+  b.innerHTML = ICONS.trash;
+  b.style.left = clamp(right + 4, 2, W - S - 2) + 'px';
+  b.style.top = (top - S - 4 >= 2 ? top - S - 4 : top + 4) + 'px';
+  for (const ev of ['pointerdown', 'mousedown']) b.addEventListener(ev, e => e.stopPropagation());
+  b.onclick = remove;
+  return b;
 }
 
 const repaint = () => pages.forEach(paint);
@@ -933,10 +948,30 @@ function setWidth(w) {
   restyle();
 }
 
-function goPage(dir) {
-  const k = clamp(currentIndex() + dir, 0, pages.length - 1);
+function goPage(dir) { jumpTo(currentIndex() + dir); }
+function jumpTo(k) {
+  k = clamp(k, 0, pages.length - 1);
   pages[k]?.div.scrollIntoView({ block: 'start' });
+  showPage(k);
 }
+
+// Page number box: shows the page filling the window; type a number and press Enter to go there.
+let pageTimer = 0;
+function showPage(k = currentIndex()) {
+  $('pageOf').textContent = `/ ${pages.length}`;
+  if (document.activeElement !== $('pageNum')) $('pageNum').value = pages.length ? k + 1 : '';
+}
+addEventListener('scroll', () => { if (!pageTimer) pageTimer = requestAnimationFrame(() => { pageTimer = 0; showPage(); }); }, { passive: true });
+$('pageNum').onkeydown = e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const n = parseInt($('pageNum').value, 10);
+    if (n >= 1 && n <= pages.length) { $('pageNum').blur(); jumpTo(n - 1); }
+    else { say(`There’s no page ${$('pageNum').value.trim() || 'there'}. Pick one from 1 to ${pages.length}.`); $('pageNum').select(); }
+  } else if (e.key === 'Escape') { e.preventDefault(); $('pageNum').blur(); }
+};
+$('pageNum').onblur = () => showPage();
+$('pageNum').onfocus = () => $('pageNum').select();
 
 function togglePanel(id, field) {
   const el = $(id);
@@ -945,7 +980,6 @@ function togglePanel(id, field) {
   el.style.top = header.getBoundingClientRect().bottom + 6 + 'px';
   if (id === 'panel') {   // set up before showing, so nothing changes the fields while you type
     $('panelMsg').textContent = '';
-    if (!$('range').value) $('range').value = String(targetIndex() + 1);
   }
   el.showPopover();
   if (field) $(field).select();
@@ -957,7 +991,6 @@ for (const b of document.querySelectorAll('[data-tool]')) b.onclick = () => setT
 $('color').onchange = $('width').onchange = restyle;
 $('undo').onclick = undo;
 $('redo').onclick = redo;
-$('del').onclick = remove;
 $('zin').onclick = () => step(1);
 $('zout').onclick = () => step(-1);
 $('zoom').onchange = e => {
@@ -1053,7 +1086,7 @@ addEventListener('pointercancel', up);
 addEventListener('mouseup', released);
 $('pages').addEventListener('mousedown', e => { if (e.target === e.currentTarget && sel) select(null); });
 addEventListener('dragover', e => e.preventDefault());
-addEventListener('drop', e => { e.preventDefault(); openFile(e.dataTransfer.files[0]); });
+addEventListener('drop', e => { e.preventDefault(); if (!docs.has('main')) openFile(e.dataTransfer.files[0]); });
 addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 let resizing;
 addEventListener('resize', () => {
@@ -1072,7 +1105,7 @@ const KEYS = {
   'p': () => togglePanel('panel', 'range'),
   '?': () => togglePanel('keys'),
   '[': () => thisPage() && rotatePages(thisPage(), -90), ']': () => thisPage() && rotatePages(thisPage(), 90),
-  'j': () => goPage(1), 'k': () => goPage(-1),
+  'j': () => goPage(1), 'k': () => goPage(-1), 'g': () => { $('pageNum').focus(); $('pageNum').select(); },
   'delete': () => remove(), 'backspace': () => remove(),
   'escape': () => {
     const open = document.querySelectorAll(':popover-open');
@@ -1082,7 +1115,8 @@ const KEYS = {
   },
 };
 const CTRL_KEYS = {
-  's': save, 'o': () => $('file').click(), 'z': undo, 'y': redo,
+  's': save, 'o': () => docs.has('main') || $('file').click(),   // with a PDF open, there's no opening another one here
+  'z': undo, 'y': redo,
   '=': () => step(1), '+': () => step(1), '-': () => step(-1), '0': () => setZoom(1),
 };
 

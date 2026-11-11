@@ -39,11 +39,13 @@
     <button id="redo" title="Redo (Ctrl+Y)" aria-label="Redo (Ctrl+Y)">
       <svg viewBox="0 0 16 16"><path d="M10.5 3.5l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 6.5H6.5a3.5 3.5 0 0 0 0 7H9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
     </button>
-    <button id="del" title="Delete selected annotation (Del)" aria-label="Delete selected annotation (Del)">
-      <svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
-    </button>
   </div>
   <span class="grow"></span>
+  <div class="group" id="pageBox" title="Page number. Type one and press Enter to go there (G)">
+    <input id="pageNum" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Page number: type one and press Enter to go there (G)" value="">
+    <span id="pageOf"></span>
+  </div>
+  <span class="sep"></span>
   <div class="group">
     <button id="zout" title="Zoom out (Ctrl −)" aria-label="Zoom out (Ctrl −)">−</button>
     <select id="zoom" title="Zoom" aria-label="Zoom">
@@ -71,7 +73,7 @@
   <span class="sep"></span>
   <div class="group">
     <button id="keysBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts (?)">?</button>
-    <button id="open" title="Open a PDF from your computer (Ctrl+O)">Open <span class="key">(Ctrl+O)</span></button>
+    <button id="open" class="no-doc" title="Open a PDF from your computer (Ctrl+O)">Open <span class="key">(Ctrl+O)</span></button>
     <button id="save" class="primary" title="Save an annotated copy (Ctrl+S)">Save as… <span class="key">(Ctrl+S)</span></button>
   </div>
 </header>
@@ -79,8 +81,8 @@
 
 <div id="panel" class="pop" popover aria-labelledby="panelTitle">
   <h2 id="panelTitle">Pages <span id="count"></span></h2>
-  <label for="range">Rotate or delete several pages</label>
-  <input id="range" placeholder="e.g. 2-4, 7, 10-end" autocomplete="off" spellcheck="false">
+  <label for="range">Rotate or delete pages</label>
+  <input id="range" placeholder="e.g. 3, 5-7, 10-end" autocomplete="off" spellcheck="false">
   <div class="row">
     <button id="rotL" title="Rotate these pages left ([)">↺ Left <span class="key">([)</span></button>
     <button id="rotR" title="Rotate these pages right (])">↻ Right <span class="key">(])</span></button>
@@ -113,12 +115,12 @@
       <dt>Editing</dt>
       <dd><kbd>Ctrl Z</kbd> Undo</dd><dd><kbd>Ctrl Y</kbd> Redo</dd><dd><kbd>Del</kbd> Delete annotation</dd><dd><kbd>Esc</kbd> Deselect</dd>
       <dt>File</dt>
-      <dd><kbd>Ctrl O</kbd> Open</dd><dd><kbd>Ctrl S</kbd> Save as</dd>
+      <dd class="no-doc"><kbd>Ctrl O</kbd> Open</dd><dd><kbd>Ctrl S</kbd> Save as</dd>
     </dl>
     <dl>
       <dt>View</dt>
       <dd><kbd>Ctrl +</kbd> <kbd>Ctrl −</kbd> Zoom</dd><dd><kbd>Ctrl 0</kbd> 100%</dd><dd><kbd>W</kbd> Fit width</dd><dd><kbd>F</kbd> Fit page</dd>
-      <dd><kbd>D</kbd> Two-page view</dd><dd><kbd>J</kbd> <kbd>K</kbd> Next, previous page</dd>
+      <dd><kbd>D</kbd> Two-page view</dd><dd><kbd>J</kbd> <kbd>K</kbd> Next, previous page</dd><dd><kbd>G</kbd> Go to page</dd>
       <dt>Pages</dt>
       <dd><kbd>N</kbd> Note from clipboard</dd><dd><kbd>[</kbd> <kbd>]</kbd> Rotate page</dd><dd><kbd>Shift Del</kbd> Delete page</dd>
       <dd><kbd>P</kbd> Pages panel</dd><dd><kbd>?</kbd> This list</dd>

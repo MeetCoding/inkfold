@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Inkfold",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Highlight, draw, add Markdown & LaTeX notes, and rotate, delete or split pages in any PDF. Private: nothing leaves your computer.",
   "icons": {
     "16": "icons/16.png",

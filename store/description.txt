@@ -15,6 +15,7 @@ ORGANISE PAGES
 
 READ COMFORTABLY
 • Fit width, fit page and two-page view, smooth even on long documents
+• See which page you're on, and jump to any page by number
 • Selectable, searchable text that works with Ctrl+F and screen readers
 • PDFs stay in their own tab with their normal address, so AI assistants built into your browser, such as Gemini in Chrome, can still read them
 

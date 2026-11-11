@@ -35,6 +35,14 @@ button.primary:hover { background: var(--ink); opacity: .88; }
 select { padding: 0 6px; }
 select:disabled { opacity: .35; cursor: default; }
 #zoom { width: 116px; font-variant-numeric: tabular-nums; }
+#pageBox { gap: 5px; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pageNum {
+  width: 44px; height: 28px; padding: 0 6px; text-align: center; font: inherit; color: var(--ink);
+  background: var(--hover); border: 1px solid transparent; border-radius: 7px;
+}
+#pageNum:hover { border-color: var(--line); }
+#pageNum:focus { background: var(--bar); border-color: var(--accent); outline: none; }
+body:not(.loaded) #pageBox, body:not(.loaded) #pageBox + .sep, body.loaded .no-doc { display: none; }
 .swatch { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; cursor: pointer; }
 .swatch:hover { background: var(--hover); }
 .swatch:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -66,6 +74,13 @@ body[data-tool="highlight"] .shapes * { pointer-events: none; }
 body[data-tool="highlight"] .textLayer :is(span, br) { cursor: text; }
 .outline { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
 .handle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; pointer-events: all; }
+/* Delete button at the corner of the selected annotation */
+.delsel {
+  position: absolute; z-index: 4; display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  background: var(--bar); color: var(--ink); border-radius: 50%; box-shadow: 0 0 0 1px var(--line), 0 2px 6px rgb(0 0 0 / .18);
+}
+.delsel:hover, .delsel:focus-visible { background: var(--bar); color: var(--danger); box-shadow: 0 0 0 1px var(--danger), 0 2px 6px rgb(0 0 0 / .18); }
+.delsel svg { width: 15px; height: 15px; }
 
 /* Text layer, trimmed from pdf.js's pdf_viewer.css. Near-invisible (not transparent) text, so Chrome
    treats it as real, visible text for selection, find, accessibility and assistants. */
