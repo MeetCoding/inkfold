@@ -201,6 +201,7 @@ async function localBytes(src) {   // (reading it directly would only fail, with
 async function openUrl(src) {
   try {
     const file = decodeURIComponent(new URL(src).pathname.split('/').pop()) || 'document.pdf';
+    srcUrl = src;
     await openPdf(IN_PAGE && src.startsWith('file:') ? await localBytes(src) : await fetchBytes(src), file);
   } catch {
     fail(src.startsWith('file:')
@@ -1320,19 +1321,40 @@ function setTool(t) {
 
 /* ---------- saving ---------- */
 
+// Where the open PDF came from, so Save can offer to write over it.
+let srcHandle = null;   // a file handle, when it was picked or dropped here
+let srcUrl = null;      // its address, when it was opened straight in Chrome
+
+// Chrome remembers the last folder used with each picker id. A file opened from file:// gives no handle,
+// so each of its folders gets its own id: after the first save there, the picker opens in that folder.
+function folderId() {
+  if (!srcUrl?.startsWith('file:')) return 'inkfold-save';
+  const dir = srcUrl.slice(0, srcUrl.lastIndexOf('/'));
+  let h = 5381;
+  for (const c of dir) h = (h * 33 ^ c.charCodeAt(0)) >>> 0;
+  return 'inkfold-' + h.toString(36);
+}
+
 async function save() {
   finishEdit();
   if (!docs.has('main')) return;
-  const suggestedName = name.replace(/\.pdf$/i, '') + '-annotated.pdf';
+  const suggestedName = name;   // the original's name, so saving writes over it (Chrome asks to confirm)
   let handle = null;
-  if (window.showSaveFilePicker) {   // ask for a name and folder first, while the click still counts as a user action
+  if (window.showSaveFilePicker) {   // ask where first, while the click still counts as a user action
+    const opts = {
+      suggestedName, id: folderId(),
+      types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }],
+    };
+    if (srcHandle) opts.startIn = srcHandle;   // opens in the original's own folder
+    else if (!srcUrl?.startsWith('file:')) opts.startIn = 'downloads';
     try {
-      handle = await showSaveFilePicker({
-        suggestedName, id: 'pdf-shapes', startIn: 'downloads',
-        types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }],
-      });
+      handle = await showSaveFilePicker(opts);
     } catch (e) {
       if (e.name === 'AbortError') return;
+      if (opts.startIn) {   // e.g. the original was moved since it was opened
+        delete opts.startIn;
+        try { handle = await showSaveFilePicker(opts); } catch (e2) { if (e2.name === 'AbortError') return; }
+      }
     }
   }
   say('Saving…', true);
@@ -1342,10 +1364,12 @@ async function save() {
       const w = await handle.createWritable();
       await w.write(out);
       await w.close();
-      say(firstTime('tip-save') ? `Saved “${handle.name}”. Your original PDF is unchanged.` : `Saved “${handle.name}”.`);
+      const over = srcHandle ? await srcHandle.isSameEntry(handle).catch(() => false)
+        : !!srcUrl?.startsWith('file:') && handle.name === name;
+      say(over ? `Saved over “${handle.name}”.` : `Saved “${handle.name}”.`);
     } else {
       download(out, suggestedName);
-      say('Saved a copy to your downloads.');
+      say('Saved to your downloads.');
     }
     dirty = false;
   } catch (e) {
@@ -1566,8 +1590,9 @@ const ICONS = {
   trash: '<svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
-async function openFile(f) {
+async function openFile(f, handle = null) {
   if (!f) return;
+  srcHandle = handle;
   await openPdf(await f.arrayBuffer(), f.name);
   // Files dropped or picked here live on the extension's page, which Gemini in Chrome can't read.
   if (!IN_PAGE && docs.has('main') && firstTime('tip-gemini')) {
@@ -1710,7 +1735,14 @@ $('note').onclick = () => addNote();
 $('pagesBtn').onclick = () => togglePanel('panel', 'range');
 $('keysBtn').onclick = () => togglePanel('keys');
 $('save').onclick = save;
-$('open').onclick = () => $('file').click();
+async function pickFile() {   // the File System Access picker gives a handle, so Save can open the same folder
+  if (!window.showOpenFilePicker) return $('file').click();
+  try {
+    const [h] = await showOpenFilePicker({ id: 'inkfold-open', types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] });
+    await openFile(await h.getFile(), h);
+  } catch (e) { if (e.name !== 'AbortError') $('file').click(); }
+}
+$('open').onclick = pickFile;
 $('file').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
 
 // Pages panel: the same keys as on a page, but applied to the typed range
@@ -1793,7 +1825,13 @@ addEventListener('pointercancel', up);
 addEventListener('mouseup', released);
 $('pages').addEventListener('mousedown', e => { if (e.target === e.currentTarget && sel) select(null); });
 addEventListener('dragover', e => e.preventDefault());
-addEventListener('drop', e => { e.preventDefault(); if (!docs.has('main')) openFile(e.dataTransfer.files[0]); });
+addEventListener('drop', async e => {
+  e.preventDefault();
+  if (docs.has('main')) return;
+  const item = [...e.dataTransfer.items].find(i => i.kind === 'file');
+  const f = e.dataTransfer.files[0], h = item?.getAsFileSystemHandle?.();   // must be asked for during the event
+  openFile(f, await h?.catch(() => null) ?? null);
+});
 addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 let resizing;
 addEventListener('resize', () => {
@@ -1823,7 +1861,7 @@ const KEYS = {
   },
 };
 const CTRL_KEYS = {
-  's': save, 'o': () => docs.has('main') || $('file').click(),   // with a PDF open, there's no opening another one here
+  's': save, 'o': () => docs.has('main') || pickFile(),   // with a PDF open, there's no opening another one here
   'z': undo, 'y': redo, 'v': magicPaste,
   '=': () => step(1), '+': () => step(1), '-': () => step(-1), '0': () => setZoom(1),
 };

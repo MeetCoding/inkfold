@@ -32,7 +32,7 @@ KEYBOARD FIRST
 Every action has a shortcut, shown in brackets on its button. Press ? to see them all.
 
 WORKS EVERYWHERE YOUR PDF GOES
-Your highlights, shapes and notes are saved as standard PDF annotations, so they show up in Acrobat, Preview, Chrome's own viewer and other apps, and stay editable when you reopen the file in Inkfold. Saving always creates a new copy; your original file is never changed.
+Your highlights, shapes and notes are saved as standard PDF annotations, so they show up in Acrobat, Preview, Chrome's own viewer and other apps, and stay editable when you reopen the file in Inkfold. Save writes over the original after you confirm Chrome's "replace" prompt, or saves a new copy if you pick another name.
 
 PRIVATE BY DESIGN
 Inkfold runs entirely in your browser. There are no servers, no accounts, no analytics and no tracking, and your documents are never uploaded. It's free and open source: https://github.com/MeetCoding/inkfold

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.0: save over the original
+
+- One **Save** button (Ctrl+S) instead of "Save as". Chrome's save dialog opens with the original file's name; confirm Chrome's "replace" prompt to write over the original, every time. Pick another name to keep it and save a copy.
+- The dialog opens in the original's folder for PDFs opened with Open or dropped on Inkfold. For PDFs opened straight from your computer in Chrome, Inkfold remembers each folder separately, so from the second save there on the dialog opens in that folder.
+
 ## 2.6.0: simpler note and image buttons
 
 - **Add a note** is now an icon on the left of the toolbar, next to **Add an image**. Its dialog is just a box to type in; copied Markdown goes in with Magic paste (<kbd>Ctrl</kbd>+<kbd>V</kbd>).

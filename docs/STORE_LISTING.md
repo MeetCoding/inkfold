@@ -38,7 +38,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 
 **Single purpose:**
 
-> Inkfold lets users view and annotate PDF documents in Chrome (highlights, shapes, notes and page changes) and save the result as a new PDF.
+> Inkfold lets users view and annotate PDF documents in Chrome (highlights, shapes, notes and page changes) and save the result over the original PDF or as a new one.
 
 **Permission justifications:**
 
@@ -68,6 +68,6 @@ To test: open any PDF link on the web (for example the PDF of any arXiv paper). 
 • Press N to type a note page, or copy some Markdown and press Ctrl+V (Magic paste).
 • Open a scanned PDF (no text layer): text is recognised in the background, with a small progress bar, and becomes selectable. Saved copies contain it as invisible text.
 • Open a PDF with large images (several MB): a card offers to compress it.
-• Right-click a page to rotate or delete it; press P to work on ranges or split. Ctrl+S saves a new copy.
+• Right-click a page to rotate or delete it; press P to work on ranges or split. Ctrl+S saves (over the original after you confirm, or as a new copy).
 Automatic opening can be turned off from the toolbar icon's right-click menu. No account or setup is needed.
 ```

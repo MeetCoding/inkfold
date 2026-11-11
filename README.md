@@ -70,7 +70,7 @@ Coming soon.
 | Add a note | Press <kbd>N</kbd> (or the note button, next to the picture button) and type the note. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. (For Markdown you copied, use **Magic paste**.) |
 | Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Split | In the Pages panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
-| Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> saves a new copy wherever you choose. Your original file is never changed. |
+| Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> opens Chrome's save dialog with the original file's name, so confirming Chrome's "replace" prompt writes over the original. Pick another name or folder to keep the original and save a copy. For a PDF opened straight from your computer, the dialog opens in that file's folder from the second save there on (Chrome gives extensions no way to find the folder before that). |
 
 ### Keyboard shortcuts
 
@@ -92,7 +92,7 @@ Coming soon.
 | <kbd>Del</kbd> | Delete annotation | <kbd>Shift</kbd> <kbd>Del</kbd> | Delete page |
 | <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages panel |
 | <kbd>Ctrl</kbd> <kbd>V</kbd> | Magic paste | | |
-| <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> | Open (start page only) / save as | <kbd>?</kbd> | Shortcut list |
+| <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> | Open (start page only) / save | <kbd>?</kbd> | Shortcut list |
 
 Page shortcuts act on the page under the pointer, or else the page filling the window. Inside the Pages panel's range box, <kbd>[</kbd> <kbd>]</kbd> and <kbd>Shift</kbd> <kbd>Del</kbd> act on the typed range instead.
 
