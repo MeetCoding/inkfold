@@ -129,9 +129,13 @@
     <button id="delPages" class="danger" title="Delete these pages (Shift+Del)">Delete <span class="key">(Shift+Del)</span></button>
   </div>
   <hr>
-  <label for="splitRanges">Split into separate PDFs</label>
+  <label for="splitRanges">Split or extract pages</label>
   <input id="splitRanges" placeholder="e.g. 1-3, 4-8, 9-end" autocomplete="off" spellcheck="false">
-  <p class="help">Each range becomes its own file, keeping your highlights, shapes and notes. A save dialog opens for each, already named.</p>
+  <div class="seg splitmode" role="radiogroup" aria-label="Save the ranges as">
+    <button type="button" role="radio" data-mode="separate" aria-checked="true">A file for each range</button>
+    <button type="button" role="radio" data-mode="one" aria-checked="false">One PDF</button>
+  </div>
+  <p class="help" id="splitHelp"></p>
   <div class="row"><button id="split" class="primary">Split… <span class="key">(Enter)</span></button></div>
   <hr>
   <div class="mergehead"><label id="mergeLabel" for="mergeAdd">Merge PDFs</label><button id="mergeAdd" class="mini" type="button">Add PDFs…</button></div>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.2: fixes
+
+- **Disabled buttons stay disabled-looking**: "Merge and save" (and the other main buttons) no longer light up under the pointer while they can't be used.
+- **Split or extract into one PDF**: under the page ranges, choose **A file for each range** (as before) or **One PDF**, which saves all the ranges, in the order typed, as one new file, such as `notes (pages 10-12, 2, 5-6).pdf`. The choice is remembered.
+- **Moving a page**: the drop line is gone. Instead the two pages either side of where the page would go ease apart to make room, and the small copy following the pointer says where it will land ("Page 2 → between 5 and 6", "→ first", "→ last", or "stays here").
+- **Line breaks when pasting into a text box**: pasted text now always keeps its lines, whatever the source used to break them (Windows and old Mac line endings, Word's line breaks, Unicode line and paragraph separators), and a clipboard that only has formatted text (HTML) is turned into lines too. Saved text boxes with such line breaks are drawn on separate lines as well.
+- **Text tool**: the tool goes back to the pointer as soon as a box is placed, while you type into it, rather than after the box is finished.
+
 ## 2.11.1: fixes
 
 - **Save** no longer says "Saved over" when you save a file with the same name into a different folder. For a PDF opened from its file:// address (where Chrome gives no file handle to compare), Inkfold now reads the original back after saving and checks whether it's exactly what was written.

@@ -706,8 +706,9 @@ $('panel').addEventListener('drop', e => {
 
 /* ---------- moving a page ---------- */
 
-// Right-click a page, Move page: the page lifts, a small copy of it follows the pointer, and a line shows where it
-// would go. Click (or release, after dragging) to put it there. Arrow keys move the line too, Enter drops, Esc cancels.
+// Right-click a page, Move page: the page lifts and a small copy of it follows the pointer. The two pages on either
+// side of where it would go ease apart to make room, and the copy says where that is. Click (or release, after
+// dragging) to put it there. Arrow keys move the line too, Enter drops, Esc cancels.
 // The window scrolls when the pointer nears its top or bottom edge. One undo puts it back.
 let moving = null;   // { p, from, slot, ghost, line, x, y, scroll }
 
@@ -723,10 +724,10 @@ function startMove(p) {
   g.fillStyle = '#fff';
   g.fillRect(0, 0, c.width, c.height);
   if (p.canvas) g.drawImage(p.canvas, 0, 0, c.width, c.height);
-  ghost.append(c, el2('span', {}, `Page ${from + 1}`));
-  const line = el2('div', { class: 'dropline', 'aria-hidden': 'true' });
-  document.body.append(ghost, line);
-  moving = { p, from, slot: from, ghost, line, x: r.left + r.width / 2, y: Math.max(r.top, 80) + 40, scroll: 0, key: false };
+  const where = el2('span', {}, `Page ${from + 1}`);
+  ghost.append(c, where);
+  document.body.append(ghost);
+  moving = { p, from, slot: from, ghost, where, parted: [], x: r.left + r.width / 2, y: Math.max(r.top, 80) + 40, scroll: 0, key: false };
   p.div.classList.add('lifted');
   document.body.classList.add('moving');
   placeGhost();
@@ -737,12 +738,16 @@ function startMove(p) {
 // the pages of a row (and at its ends); otherwise between one page and the next.
 function slots() {
   const out = [], col = spread;
+  const rect = q => {   // where the page is, leaving out how far it's been eased aside
+    const r = q.div.getBoundingClientRect(), [dx, dy] = q.part ?? [0, 0];
+    return { left: r.left - dx, right: r.right - dx, top: r.top - dy, bottom: r.bottom - dy, width: r.width, height: r.height };
+  };
   pages.forEach((q, k) => {
-    const r = q.div.getBoundingClientRect();
+    const r = rect(q);
     out.push(col ? { k, x: r.left - GAP / 2, y: r.top + r.height / 2, len: r.height, vertical: true, r }
       : { k, x: r.left + r.width / 2, y: r.top - GAP / 2, len: r.width, vertical: false, r });
   });
-  const r = pages.at(-1).div.getBoundingClientRect();
+  const r = rect(pages.at(-1));
   out.push(col ? { k: pages.length, x: r.right + GAP / 2, y: r.top + r.height / 2, len: r.height, vertical: true, r }
     : { k: pages.length, x: r.left + r.width / 2, y: r.bottom + GAP / 2, len: r.width, vertical: false, r });
   return out;
@@ -758,19 +763,28 @@ function placeGhost() {
       : Math.hypot(Math.max(0, Math.abs(m.x - sl.x) - sl.len / 2) * 4, m.y - sl.y));
     let best = null, d = Infinity;
     for (const sl of all) { const dd = dist(sl); if (dd < d) { d = dd; best = sl; } }
-    // Only change gaps once the pointer is clearly nearer the new one, so the line doesn't flick back and forth.
+    // Only change gaps once the pointer is clearly nearer the new one, so the pages don't flick back and forth.
     const cur = all[m.slot], hold = Math.min(80, 0.15 * (cur?.vertical ? cur.r.width : cur?.r.height ?? 0));
     if (!cur || best.k === m.slot || d + hold < dist(cur)) m.slot = best.k;
   }
-  const sl = all[m.slot], L = m.line.style;
-  const len = sl.vertical ? sl.len : sl.len + 24;
-  L.width = sl.vertical ? '4px' : len + 'px';
-  L.height = sl.vertical ? len + 'px' : '4px';
-  L.transform = `translate(${sl.vertical ? sl.x - 2 : sl.x - len / 2}px, ${sl.vertical ? sl.y - len / 2 : sl.y - 2}px)`;
-  const same = m.slot === m.from || m.slot === m.from + 1;
-  m.line.classList.toggle('same', same);
-  if (m.key) m.ghost.style.transform = `translate(${sl.vertical ? sl.x + 14 : sl.x + Math.min(sl.len / 2, 160) + 14}px, ${sl.y + 10}px)`;   // beside the line
-  m.line.classList.toggle('v', sl.vertical);
+  const sl = all[m.slot], same = m.slot === m.from || m.slot === m.from + 1;
+  // The pages either side of the gap ease apart (unless the page would land where it already is).
+  const before = pages[m.slot - 1], after = pages[m.slot], push = 14;
+  const want = same ? [] : [[before, -push], [after, push]].filter(([q]) => q && q !== m.p);
+  for (const q of m.parted) if (!want.some(([w]) => w === q)) part(q, null);
+  for (const [q, d] of want) part(q, sl.vertical ? [d, 0] : [0, d]);
+  m.parted = want.map(([q]) => q);
+  const n = pages.length;
+  m.where.textContent = same ? `Page ${m.from + 1} · stays here`
+    : m.slot === 0 ? `Page ${m.from + 1} → first` : m.slot === n ? `Page ${m.from + 1} → last`
+    : `Page ${m.from + 1} → between ${m.slot} and ${m.slot + 1}`;
+  m.ghost.classList.toggle('same', same);
+  if (m.key) m.ghost.style.transform = `translate(${sl.vertical ? sl.x + 14 : sl.x + Math.min(sl.len / 2, 160) + 14}px, ${sl.y + 10}px)`;   // beside the gap
+}
+
+function part(q, d) {   // ease a page aside by [dx, dy] (null: back in place)
+  q.part = d;
+  q.div.style.translate = d ? `${d[0]}px ${d[1]}px` : '';
 }
 
 function moveGlide() {   // scroll while the pointer is near the top or bottom edge
@@ -788,7 +802,7 @@ function endMove(drop) {
   moving = null;
   cancelAnimationFrame(m.scroll);
   m.ghost.remove();
-  m.line.remove();
+  for (const q of m.parted) part(q, null);
   m.p.div.classList.remove('lifted');
   document.body.classList.remove('moving');
   if (!drop || m.slot === m.from || m.slot === m.from + 1) return say(drop ? 'The page stays where it was.' : 'Move cancelled.');
@@ -1322,13 +1336,35 @@ function rangeIds() {
   }
 }
 
+// Split: each range as a file of its own, or all of them, in the order typed, as one PDF.
+let splitMode = store.get('splitMode', 'separate');
+function setSplitMode(mode) {
+  splitMode = mode;
+  store.set('splitMode', mode);
+  for (const b of document.querySelectorAll('.splitmode button')) b.setAttribute('aria-checked', b.dataset.mode === mode);
+  $('splitHelp').textContent = mode === 'one'
+    ? 'The ranges go into one new PDF, in the order you typed them, keeping your highlights, shapes and notes.'
+    : 'Each range becomes its own file, keeping your highlights, shapes and notes. A save dialog opens for each, already named.';
+  $('split').firstChild.textContent = mode === 'one' ? 'Save as one PDF… ' : 'Split… ';
+}
+document.querySelectorAll('.splitmode button').forEach(b => {
+  b.addEventListener('mousedown', e => e.preventDefault());   // keep the focus in the range box
+  b.onclick = () => setSplitMode(b.dataset.mode);
+});
+setSplitMode(splitMode);
+
 async function split() {
   let groups;
   try { groups = parseRanges($('splitRanges').value, entries.length); $('panelMsg').textContent = ''; }
   catch (e) { $('panelMsg').textContent = e.message; return; }
   finishEdit();
   const base = name.replace(/\.pdf$/i, '');
-  const parts = groups.map(g => ({ g, file: `${base} (pages ${g.label}).pdf` }));
+  const one = splitMode === 'one';
+  let label = groups.map(g => g.label).join(', ');
+  if (label.length > 60) label = label.slice(0, 57).replace(/,?\s*[^,]*$/, '') + ' …';
+  const parts = one
+    ? [{ g: { idx: groups.flatMap(g => g.idx) }, file: `${base} (pages ${label}).pdf` }]   // every range, in order, in one file
+    : groups.map(g => ({ g, file: `${base} (pages ${g.label}).pdf` }));
   $('panel').hidePopover();
   // Each part gets its own save dialog, named and in the same folder as the last one, so it's mostly just Enter.
   // (A folder picker would ask only once, but Chrome won't let a page save straight into Downloads, Documents or
@@ -1341,7 +1377,7 @@ async function split() {
         handle = await pickPart(part.file, k, parts.length, saved.length);
         if (handle === 'stop') break;
       }
-      say(`Splitting… part ${k + 1} of ${parts.length}`, true);
+      say(one ? 'Saving…' : `Splitting… part ${k + 1} of ${parts.length}`, true);
       const out = await build(part.g.idx.map(i => entries[i]));
       if (handle) {
         const w = await handle.createWritable();
@@ -1353,7 +1389,8 @@ async function split() {
         saved.push(part.file);
       }
     }
-    if (!saved.length) return say('Split cancelled.');
+    if (!saved.length) return say(one ? 'Cancelled.' : 'Split cancelled.');
+    if (one) return say(`Saved “${saved[0]}”: ${parts[0].g.idx.length} page${parts[0].g.idx.length === 1 ? '' : 's'} from ${groups.length} range${groups.length === 1 ? '' : 's'}.`);
     say(saved.length === parts.length
       ? `Saved ${saved.length} files: ${saved.map(f => `“${f}”`).join(', ')}.`
       : `Saved ${saved.length} of ${parts.length} parts: ${saved.map(f => `“${f}”`).join(', ')}.`, { long: true });
@@ -1639,7 +1676,7 @@ async function magicPaste() {
     chrome.runtime.sendMessage({ type: 'readClipboardImage' }).catch(() => null),
     chrome.runtime.sendMessage({ type: 'readClipboard' }).catch(() => null),
   ]);
-  const t = (text ?? '').replace(/\r\n?/g, '\n').replace(/^\n+|\s+$/g, '');
+  const t = lines(text ?? '').replace(/^\n+|\s+$/g, '');
   const md = !!t && looksLikeMarkdown(t);
   const go = fn => () => { box.hidePopover(); fn(); };
   const acts = [];
@@ -1759,6 +1796,22 @@ function editText(p, s, fresh = false) {
     if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.stopPropagation(); finishEdit(); }
   });
   ta.addEventListener('blur', () => finishEdit());
+  ta.addEventListener('paste', e => {   // put copied text in as lines, whatever the source used to break them
+    const d = e.clipboardData;
+    let t = d?.getData('text/plain');
+    if (!t && d?.getData('text/html')) {
+      const div = document.createElement('div');
+      div.innerHTML = d.getData('text/html');
+      div.style.cssText = 'position:fixed;left:-9999px;white-space:normal';
+      document.body.append(div);
+      t = div.innerText;
+      div.remove();
+    }
+    if (!t) return;
+    e.preventDefault();
+    ta.setRangeText(lines(t), ta.selectionStart, ta.selectionEnd, 'end');
+    ta.dispatchEvent(new Event('input'));
+  });
   for (const ev of ['pointerdown', 'mousedown', 'dblclick']) ta.addEventListener(ev, e => e.stopPropagation());
   editing = { p, s, before, ta, fresh };
   p.div.append(ta);
@@ -1776,11 +1829,14 @@ function placeEditor() {
   });
 }
 
+// \r\n, \r, vertical tabs (Word's line breaks), form feeds and Unicode line/paragraph separators all become \n.
+const lines = t => t.replace(/\r\n?|[\v\f\u0085\u2028\u2029]/g, '\n');
+
 function finishEdit() {
   if (!editing) return;
   const { s, before, ta, fresh } = editing;
   editing = null;
-  const text = ta.value.replace(/\s+$/, '');
+  const text = lines(ta.value).replace(/\s+$/, '');
   ta.remove();
   if (text.trim()) s.text = text;
   else {   // an empty box is removed
@@ -1789,10 +1845,7 @@ function finishEdit() {
     if (sel === s) sel = null;
   }
   if (snapshot() !== before) commit(before);
-  if (fresh && tool === 'text') {   // a new box is done: back to the pointer, with the box selected to move or resize
-    setTool('select');
-    if (text.trim()) select(s);
-  }
+  if (fresh && text.trim()) select(s);   // a new box is done: selected, to move or resize
   syncControls();
   repaint();
 }
@@ -1892,6 +1945,10 @@ function up() {
   if (pendingText) {
     const { p, s, fresh } = pendingText;
     pendingText = null;
+    if (fresh && tool === 'text') {   // a box placed: back to the pointer straight away, while you type into it
+      tool = document.body.dataset.tool = 'select';
+      for (const b of document.querySelectorAll('button[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === 'select');
+    }
     setTimeout(() => editText(p, s, fresh));
   }
   if (erasing) {   // one undo step for the whole stroke

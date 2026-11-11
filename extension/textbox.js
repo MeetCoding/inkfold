@@ -58,7 +58,7 @@ export function layout(text, size) {
     const k = size / 1000;   // MathJax units are 1/1000 em
     const lines = [];
     let y = PAD, w = 0;
-    for (const raw of joinMath(text).split('\n')) {
+    for (const raw of joinMath(text.replace(/\r\n?|[\v\f\u0085\u2028\u2029]/g, '\n')).split('\n')) {   // any line break
       const items = [];
       let x = PAD, asc = size * 0.78, desc = size * 0.24;
       for (const r of runs(raw)) {
