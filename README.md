@@ -1,0 +1,149 @@
+<p align="center">
+  <img src="extension/icons/128.png" width="96" alt="Inkfold icon">
+</p>
+
+<h1 align="center">Inkfold</h1>
+
+<p align="center">
+  Highlight, draw, add Markdown &amp; LaTeX notes, and rotate, delete or split pages in any PDF, right in Chrome.<br>
+  Lightweight, keyboard-first, and private: your files never leave your computer.
+</p>
+
+<p align="center">
+  <img src="store/screenshot-1-annotate.png" width="720" alt="Inkfold showing highlights, an ellipse and a rectangle on a PDF">
+</p>
+
+## Features
+
+- **Highlighter** that follows the lines of real text, in any colour.
+- **Rectangles and ellipses** to mark up figures, tables or anything else. Move and resize them any time.
+- **Markdown notes**: copy Markdown, press <kbd>N</kbd>, and a new page with your formatted note appears after the current one. Headings, lists, checkboxes, tables, code, quotes and links all work.
+- **LaTeX math** in notes: `$inline$`, `$$display$$`, `\(…\)`, `\[…\]` and `align`-style environments, drawn as sharp vector shapes.
+- **Page tools**: rotate or delete single pages or ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
+- **Fit width, fit page and two-page view**, with smooth resizing even on long documents.
+- **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome.
+- **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
+- **Undo and redo** for everything, including page changes.
+- **A keyboard shortcut for every action**, shown in brackets on every button. Press <kbd>?</kbd> for the full list.
+
+<p align="center">
+  <img src="store/screenshot-2-notes.png" width="45%" alt="A note page with LaTeX formulas, a checklist and a table">
+  &nbsp;
+  <img src="store/screenshot-3-pages.png" width="45%" alt="Two-page view with the Pages panel open">
+</p>
+
+## Install
+
+### From source (now)
+
+1. Download this repository (green **Code** button → **Download ZIP**) and unzip it, or `git clone https://github.com/MeetCoding/inkfold`.
+2. Open `chrome://extensions` and turn on **Developer mode** (top right).
+3. Click **Load unpacked** and choose the **`extension`** folder.
+4. Optional: in Inkfold's **Details**, turn on **Allow access to file URLs** so PDFs on your computer open in Inkfold too.
+
+### Chrome Web Store
+
+Coming soon.
+
+## Using Inkfold
+
+| To… | Do this |
+|---|---|
+| Open a PDF | Open any PDF link in Chrome, click the Inkfold toolbar icon on a PDF tab, drop a file on the window, or press <kbd>Ctrl</kbd>+<kbd>O</kbd>. |
+| Highlight | Press <kbd>H</kbd> and drag across text. Or select text first, then press <kbd>H</kbd>. |
+| Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Colour with <kbd>C</kbd>, thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>. |
+| Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. <kbd>Del</kbd> removes it. |
+| Add a note | Copy Markdown, then press <kbd>N</kbd> (or **+ Note**). It's added after the page under your pointer. |
+| Change pages | Hover over a page for its own buttons, or press <kbd>P</kbd> for the Pages panel and type a range. |
+| Split | In the Pages panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
+| Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> saves a new copy wherever you choose. Your original file is never changed. |
+
+### Keyboard shortcuts
+
+| Tools | | View | |
+|---|---|---|---|
+| <kbd>V</kbd> | Select | <kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>Ctrl</kbd> <kbd>−</kbd> | Zoom in / out |
+| <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
+| <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
+| <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |
+| <kbd>C</kbd> | Colour | <kbd>J</kbd> / <kbd>K</kbd> | Next / previous page |
+| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |
+| **Editing** | | **Pages** | |
+| <kbd>Ctrl</kbd> <kbd>Z</kbd> | Undo | <kbd>N</kbd> | Note from clipboard |
+| <kbd>Ctrl</kbd> <kbd>Y</kbd> | Redo | <kbd>[</kbd> / <kbd>]</kbd> | Rotate page left / right |
+| <kbd>Del</kbd> | Delete annotation | <kbd>Shift</kbd> <kbd>Del</kbd> | Delete page |
+| <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages panel |
+| <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> | Open / save as | <kbd>?</kbd> | Shortcut list |
+
+Page shortcuts act on the page under the pointer, or else the page filling the window. Inside the Pages panel's range box, <kbd>[</kbd> <kbd>]</kbd> and <kbd>Shift</kbd> <kbd>Del</kbd> act on the typed range instead.
+
+### Opening every PDF with Inkfold
+
+After you install it, PDFs you open in Chrome open in Inkfold automatically. PDFs that a site sends as downloads still download normally. To switch this off (or back on), **right-click the Inkfold toolbar icon** and untick **Open every PDF with Inkfold**.
+
+PDFs on your computer (`file://` links) open in Inkfold only if **Allow access to file URLs** is on in Inkfold's Details page.
+
+## Privacy
+
+Inkfold runs entirely in your browser. It has no servers, no accounts, no analytics and no tracking. PDFs, annotations and notes are never uploaded anywhere. The only network request it makes is to load the PDF you opened from the site it came from. See the full [privacy policy](PRIVACY.md).
+
+### Why it asks for each permission
+
+| Permission | Why |
+|---|---|
+| Read and change data on all websites (`<all_urls>`) | To load the PDF you open, from whichever site it's on, and to send PDF pages to Inkfold instead of Chrome's viewer. Page content is never read or changed. |
+| `declarativeNetRequestWithHostAccess` | The rule that opens PDF responses in Inkfold. |
+| `webNavigation` | To notice when you open a PDF file from your computer, so it can open in Inkfold. |
+| `activeTab` | To open the PDF in the current tab when you click the toolbar icon. |
+| `clipboardRead` | To read the Markdown you copied, only at the moment you add a note. |
+| `contextMenus` | The right-click option on the toolbar icon to turn automatic opening on or off. |
+| `storage` | To remember that setting. |
+
+## Limitations
+
+- Password-protected PDFs can't be opened. Encrypted PDFs can be annotated but not saved.
+- The highlighter needs selectable text. Scanned pages without a text layer can be marked with rectangles instead.
+- Notes use the PDF standard fonts, which cover Western European languages. Other scripts (for example Devanagari or CJK) and emoji can't be shown in notes yet.
+- When a web PDF opens in Inkfold, it is downloaded again. Links that only work once, or PDFs produced by submitting a form, may need to be downloaded and dropped onto Inkfold.
+- Form fields are shown but can't be filled in.
+
+## How it works
+
+- **[pdf.js](https://mozilla.github.io/pdf.js/)** draws each page and its invisible, selectable text layer. Only pages near the screen are drawn, and Chrome skips work for pages out of view.
+- **Annotations** are kept in PDF coordinates and drawn as SVG over the page. On save they are written as standard `Highlight`, `Square` and `Circle` annotations, with their own appearance streams.
+- **[pdf-lib](https://pdf-lib.js.org/)** writes the saved file. It edits the original document rather than copying pages out, so bookmarks, metadata and forms survive. Objects that only deleted pages used are removed, so deleted pages are really gone from the saved file.
+- **Notes** are laid out by a small Markdown renderer (`notes.js`) straight into PDF drawing commands, so their text stays selectable. **[MathJax](https://www.mathjax.org/)** turns LaTeX into SVG, which `math.js` converts into PDF vector paths. The TeX source is added as invisible text, so formulas can be copied and searched. MathJax is only loaded when a note contains math.
+
+## Project structure
+
+```
+extension/          The extension itself (load this folder in Chrome)
+  manifest.json
+  background.js     Auto-open rule, toolbar button, right-click menu, welcome on install
+  viewer.html/.css  The viewer UI
+  viewer.js         Viewer, annotations, page operations, saving and splitting
+  notes.js          Markdown -> PDF pages
+  math.js           LaTeX -> vector paths (via MathJax)
+  icons/
+  lib/              Bundled third-party libraries (see THIRD_PARTY_NOTICES.md)
+store/              Chrome Web Store screenshots and promo images
+docs/               Store listing text and review notes
+scripts/            Packaging
+PRIVACY.md          Privacy policy
+```
+
+## Development
+
+There is no build step: the extension is plain HTML, CSS and JavaScript modules.
+
+- Edit files in `extension/`, then click the reload icon on Inkfold's card in `chrome://extensions`.
+- `scripts/package.sh` creates `dist/inkfold-<version>.zip`, ready to upload to the Chrome Web Store.
+- To update a bundled library, replace its files in `extension/lib/` with the same files from its npm package (`pdfjs-dist`, `pdf-lib`, `mathjax@3`) and update the versions in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Credits
+
+Inkfold is built on [pdf.js](https://github.com/mozilla/pdf.js) (Apache-2.0), [pdf-lib](https://github.com/Hopding/pdf-lib) (MIT) and [MathJax](https://github.com/mathjax/MathJax) (Apache-2.0). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## License
+
+[MIT](LICENSE) © Meet Shah

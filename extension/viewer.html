@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inkfold</title>
+<link rel="icon" href="icons/32.png">
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body data-tool="select">
+<header>
+  <div class="group" role="toolbar" aria-label="Tools">
+    <button data-tool="select" title="Select (V): select text, move and resize shapes" aria-label="Select (V)">
+      <svg viewBox="0 0 16 16"><path d="M3 2l9 5-4 1.2L6.5 12z" fill="currentColor"/></svg>
+    </button>
+    <button data-tool="highlight" title="Highlighter (H): drag across text to highlight it" aria-label="Highlighter (H)">
+      <svg viewBox="0 0 16 16"><path d="M9.5 2.2l4.3 4.3-5.6 5.6H3.9V7.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M1.5 14.5h13" stroke="currentColor" stroke-width="1.8"/></svg>
+    </button>
+    <button data-tool="rect" title="Rectangle (R)" aria-label="Rectangle (R)">
+      <svg viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+    <button data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse (O)">
+      <svg viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="5.5" ry="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <label class="swatch" title="Colour (C)"><input type="color" id="color" value="#e5484d" aria-label="Colour (C)"><span id="swatchDot"></span></label>
+    <select id="width" title="Line thickness (1, 2, 3)" aria-label="Line thickness (1, 2, 3)">
+      <option value="1">Thin (1)</option>
+      <option value="2" selected>Medium (2)</option>
+      <option value="4">Thick (3)</option>
+    </select>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <button id="undo" title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)">
+      <svg viewBox="0 0 16 16"><path d="M5.5 3.5L2.5 6.5l3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 6.5h6.5a3.5 3.5 0 0 1 0 7H7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button id="redo" title="Redo (Ctrl+Y)" aria-label="Redo (Ctrl+Y)">
+      <svg viewBox="0 0 16 16"><path d="M10.5 3.5l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 6.5H6.5a3.5 3.5 0 0 0 0 7H9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button id="del" title="Delete selected annotation (Del)" aria-label="Delete selected annotation (Del)">
+      <svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <span class="grow"></span>
+  <div class="group">
+    <button id="zout" title="Zoom out (Ctrl −)" aria-label="Zoom out (Ctrl −)">−</button>
+    <select id="zoom" title="Zoom" aria-label="Zoom">
+      <option value="width">Fit width (W)</option>
+      <option value="page">Fit page (F)</option>
+      <option value="0.5">50%</option>
+      <option value="0.75">75%</option>
+      <option value="1">100% (Ctrl+0)</option>
+      <option value="1.25">125%</option>
+      <option value="1.5">150%</option>
+      <option value="2">200%</option>
+      <option value="3">300%</option>
+      <option value="custom" id="custom" hidden></option>
+    </select>
+    <button id="zin" title="Zoom in (Ctrl +)" aria-label="Zoom in (Ctrl +)">+</button>
+    <button id="spread" title="Two-page view (D)" aria-label="Two-page view (D)" aria-pressed="false">
+      <svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="5.75" height="10" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="8.75" y="3" width="5.75" height="10" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+    </button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <button id="note" title="Add a page after the current one with the Markdown in your clipboard (N)">+ Note <span class="key">(N)</span></button>
+    <button id="pagesBtn" title="Rotate, delete or split pages (P)">Pages <span class="key">(P)</span></button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <button id="keysBtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts (?)">?</button>
+    <button id="open" title="Open a PDF from your computer (Ctrl+O)">Open <span class="key">(Ctrl+O)</span></button>
+    <button id="save" class="primary" title="Save an annotated copy (Ctrl+S)">Save as… <span class="key">(Ctrl+S)</span></button>
+  </div>
+</header>
+<main id="pages" aria-label="Document"></main>
+
+<div id="panel" class="pop" popover aria-labelledby="panelTitle">
+  <h2 id="panelTitle">Pages <span id="count"></span></h2>
+  <label for="range">Rotate or delete pages</label>
+  <input id="range" placeholder="e.g. 2-4, 7, 10-end" autocomplete="off" spellcheck="false">
+  <div class="row">
+    <button id="rotL" title="Rotate these pages left ([)">↺ Left <span class="key">([)</span></button>
+    <button id="rotR" title="Rotate these pages right (])">↻ Right <span class="key">(])</span></button>
+    <button id="delPages" class="danger" title="Delete these pages (Shift+Del)">Delete <span class="key">(Shift+Del)</span></button>
+  </div>
+  <hr>
+  <label for="splitRanges">Split into separate PDFs</label>
+  <input id="splitRanges" placeholder="e.g. 1-3, 4-8, 9-end" autocomplete="off" spellcheck="false">
+  <p class="help">Each range becomes its own file, keeping your highlights, shapes and notes. You choose the folder.</p>
+  <div class="row"><button id="split" class="primary">Split… <span class="key">(Enter)</span></button></div>
+  <p id="panelMsg" role="alert"></p>
+</div>
+
+<div id="keys" class="pop" popover aria-labelledby="keysTitle">
+  <h2 id="keysTitle">Keyboard shortcuts</h2>
+  <div class="cols">
+    <dl>
+      <dt>Tools</dt>
+      <dd><kbd>V</kbd> Select</dd><dd><kbd>H</kbd> Highlighter</dd><dd><kbd>R</kbd> Rectangle</dd><dd><kbd>O</kbd> Ellipse</dd>
+      <dd><kbd>C</kbd> Colour</dd><dd><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Thin, medium, thick</dd>
+      <dt>Editing</dt>
+      <dd><kbd>Ctrl Z</kbd> Undo</dd><dd><kbd>Ctrl Y</kbd> Redo</dd><dd><kbd>Del</kbd> Delete annotation</dd><dd><kbd>Esc</kbd> Deselect</dd>
+      <dt>File</dt>
+      <dd><kbd>Ctrl O</kbd> Open</dd><dd><kbd>Ctrl S</kbd> Save as</dd>
+    </dl>
+    <dl>
+      <dt>View</dt>
+      <dd><kbd>Ctrl +</kbd> <kbd>Ctrl −</kbd> Zoom</dd><dd><kbd>Ctrl 0</kbd> 100%</dd><dd><kbd>W</kbd> Fit width</dd><dd><kbd>F</kbd> Fit page</dd>
+      <dd><kbd>D</kbd> Two-page view</dd><dd><kbd>J</kbd> <kbd>K</kbd> Next, previous page</dd>
+      <dt>Pages</dt>
+      <dd><kbd>N</kbd> Note from clipboard</dd><dd><kbd>[</kbd> <kbd>]</kbd> Rotate page</dd><dd><kbd>Shift Del</kbd> Delete page</dd>
+      <dd><kbd>P</kbd> Pages panel</dd><dd><kbd>?</kbd> This list</dd>
+    </dl>
+  </div>
+  <p class="help">Page keys act on the page under the pointer, or else the one filling the window.</p>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="dlg" aria-labelledby="dlgTitle">
+  <form method="dialog">
+    <h2 id="dlgTitle"></h2>
+    <div id="dlgBody"></div>
+    <div class="actions">
+      <button value="cancel" id="dlgCancel">Cancel</button>
+      <button value="ok" id="dlgOk" class="primary">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<label id="drop">
+  <img src="icons/128.png" alt="">
+  <strong>Open a PDF</strong>
+  <span>Drop it here or click to choose one <span class="key">(Ctrl+O)</span>. PDF links you open in Chrome come here too.</span>
+  <span id="hint"></span>
+  <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+</label>
+<script type="module" src="viewer.js"></script>
+</body>
+</html>
