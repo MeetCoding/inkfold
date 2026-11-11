@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.1: fixed text boxes vanishing; a set of standard colours
+
+- Fixed: clicking with the text tool opened a text box that disappeared a moment later (with an ordinary-speed click). Every click anywhere was also quietly re-selecting the current tool, which closed the box; that's gone too.
+- Colours are now five standard ones, shown as dots in the toolbar: red, orange, green, blue and black for shapes and text, and light yellow, green, blue, pink and orange for the highlighter. <kbd>C</kbd> moves to the next one.
+- With the select tool and nothing selected, the colour and thickness controls are hidden. Select an annotation to change its colour or thickness.
+
 ## 1.9.0: text boxes with LaTeX
 
 - **Text boxes** (<kbd>T</kbd>): click anywhere on a page and type. Text between `$` signs is LaTeX and is typeset when you finish. Change the colour, and the size with the new size buttons or <kbd>−</kbd> / <kbd>+</kbd>. Double-click a box to edit it, drag to move it. The font is Helvetica, one of the fonts every PDF reader has, so boxes look the same everywhere. Saved as standard `FreeText` annotations, editable again in Inkfold.

@@ -67,8 +67,13 @@ let entries = [], pages = [], shapes = [], history = [], future = [], hovered = 
 let tool = 'select', sel = null, drag = null, pick = null, dirty = false, msgTimer;
 let zoom = 1, fit = store.get('fit', 'auto'), spread = store.get('spread', false);
 let lineWidth = store.get('width', 2);
+// A few standard colours: light ones for the highlighter (ink shows through), strong ones for shapes and text.
+const PALETTES = {
+  highlight: [['Yellow', '#ffd400'], ['Green', '#9be28f'], ['Blue', '#8fc7ff'], ['Pink', '#ff9ccb'], ['Orange', '#ffb561']],
+  ink: [['Red', '#e5484d'], ['Orange', '#e8590c'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
+};
 const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}) };
-let textSize = store.get('textSize', 12), editing = null, lastPress = {};
+let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null;
 const snapshot = () => JSON.stringify({ entries, shapes });
 
 /* ---------- loading ---------- */
@@ -674,7 +679,7 @@ function down(e, p) {
     if (s.type === 'text' && lastPress.s === s && e.timeStamp - lastPress.t < 450) {
       e.preventDefault();
       lastPress = {};
-      setTimeout(() => editText(p, s));
+      pendingText = { p, s, fresh: false };
       return;
     }
     lastPress = { s, t: e.timeStamp };
@@ -684,7 +689,7 @@ function down(e, p) {
     e.preventDefault();
     const old = shapes[t.dataset.i];
     const s = old?.type === 'text' ? old : { page: p.id, type: 'text', x1: at[0], y1: at[1], x2: at[0], y2: at[1], text: '', size: textSize, color: colors.text };
-    setTimeout(() => editText(p, s, s !== old));   // after this press has finished moving the focus
+    pendingText = { p, s, fresh: s !== old };   // opened on release: the press itself still moves the focus
     return;
   } else if (tool === 'rect' || tool === 'ellipse') {  // draw a new one
     sel = { page: p.id, type: tool, x1: at[0], y1: at[1], x2: at[0], y2: at[1], color: colors.shape, width: lineWidth };
@@ -711,6 +716,11 @@ function move(e) {
 }
 
 function up() {
+  if (pendingText) {
+    const { p, s, fresh } = pendingText;
+    pendingText = null;
+    setTimeout(() => editText(p, s, fresh));
+  }
   if (!drag) return;
   const px = drag.p.vp.scale;
   if (drag.fresh && (sel.x2 - sel.x1) * px < 4 && (sel.y2 - sel.y1) * px < 4) {   // a click, not a drag
@@ -802,9 +812,25 @@ function commit(before) {
 
 const kind = () => { const t = sel ? sel.type : tool; return t === 'highlight' || t === 'text' ? t : 'shape'; };
 
+const palette = () => PALETTES[kind() === 'highlight' ? 'highlight' : 'ink'];
+const curColor = () => (sel?.color ?? colors[kind()]).toLowerCase();
+
 function syncControls() {   // the colour and thickness boxes show the selection, or the defaults for the tool
-  $('color').value = sel?.color ?? colors[kind()];
-  $('swatchDot').style.background = $('color').value;
+  // With the select tool and nothing selected there's nothing to style, so the controls are hidden.
+  const styling = tool !== 'select' || !!sel;
+  $('styleBox').hidden = $('styleSep').hidden = !styling;
+  const pal = palette(), box = $('palette');
+  if (box.dataset.set !== pal[0][1]) {   // rebuild when switching between highlighter and ink colours
+    box.dataset.set = pal[0][1];
+    box.replaceChildren(...pal.map(([n, c]) => {
+      const b = el2('button', { type: 'button', role: 'radio', 'data-c': c, title: `${n} (C for the next colour)`, 'aria-label': n }, el2('span', { class: 'dot' }));
+      b.firstChild.style.background = c;
+      b.addEventListener('mousedown', e => e.preventDefault());   // keeps a text box being typed in open
+      b.onclick = () => pickColor(c);
+      return b;
+    }));
+  }
+  for (const b of box.children) b.setAttribute('aria-checked', b.dataset.c === curColor());
   const w = sel?.width ?? lineWidth, k = kind();
   for (const b of $('widths').querySelectorAll('button')) {
     b.setAttribute('aria-checked', +b.dataset.w === w && k === 'shape');
@@ -815,18 +841,20 @@ function syncControls() {   // the colour and thickness boxes show the selection
   $('tsizeVal').textContent = (sel?.type === 'text' ? sel.size : textSize) + ' pt';
 }
 
-function restyle() {   // also sets the default for new annotations of that kind
-  const c = $('color').value, w = +($('widths').querySelector('[aria-checked="true"]')?.dataset.w ?? lineWidth);
-  $('swatchDot').style.background = c;
+function pickColor(c) {   // for the selection, and as the default for new annotations of that kind
   colors[kind()] = c;
-  if (kind() === 'shape') lineWidth = w;
   store.set('colors', colors);
-  store.set('width', lineWidth);
-  if (!sel) return;
-  if (!editing) commit(snapshot());
-  sel.color = c;
-  if (sel.type === 'rect' || sel.type === 'ellipse') sel.width = w;
-  repaint();
+  if (sel && sel.color !== c) {
+    if (!editing) commit(snapshot());
+    sel.color = c;
+    repaint();
+  }
+  syncControls();
+}
+
+function nextColor() {
+  const pal = palette(), i = pal.findIndex(([, c]) => c === curColor());
+  pickColor(pal[(i + 1) % pal.length][1]);
 }
 
 function remove() {
@@ -860,7 +888,7 @@ function redo() {
 function setTool(t) {
   finishEdit();
   tool = document.body.dataset.tool = t;
-  for (const b of document.querySelectorAll('[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === t);
+  for (const b of document.querySelectorAll('button[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === t);
   if (t === 'highlight') highlightSelection();   // text already selected? highlight it straight away
   syncControls();
 }
@@ -1089,8 +1117,13 @@ async function openFile(f) {
 function setWidth(w) {
   if (kind() !== 'shape') return;
   lineWidth = w;
-  for (const b of $('widths').querySelectorAll('button')) b.setAttribute('aria-checked', +b.dataset.w === w);
-  restyle();
+  store.set('width', w);
+  if (sel && sel.width !== w) {
+    commit(snapshot());
+    sel.width = w;
+    repaint();
+  }
+  syncControls();
 }
 
 function goPage(dir) { jumpTo(currentIndex() + dir); }
@@ -1132,8 +1165,7 @@ function togglePanel(id, field) {
 
 const thisPage = () => (pages.length ? new Set([pages[targetIndex()].id]) : null);
 
-for (const b of document.querySelectorAll('[data-tool]')) b.onclick = () => setTool(b.dataset.tool);
-$('color').onchange = restyle;
+for (const b of document.querySelectorAll('button[data-tool]')) b.onclick = () => setTool(b.dataset.tool);
 for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
 $('tsmaller').onclick = () => setTextSize(-1);
 $('tbigger').onclick = () => setTextSize(1);
@@ -1248,7 +1280,7 @@ addEventListener('resize', () => {
 const KEYS = {
   'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'), 't': () => setTool('text'),
   '-': () => setTextSize(-1), '=': () => setTextSize(1), '+': () => setTextSize(1),
-  'c': () => ($('color').showPicker ? $('color').showPicker() : $('color').click()),
+  'c': nextColor,
   '1': () => setWidth(1), '2': () => setWidth(2), '3': () => setWidth(4),
   'w': () => setZoom(fitZoom('width'), 'width'), 'f': () => setZoom(fitZoom('page'), 'page'),
   'd': () => setSpread(!spread),

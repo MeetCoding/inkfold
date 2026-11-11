@@ -25,9 +25,9 @@
       <svg viewBox="0 0 16 16"><path d="M3 3.5h10M8 3.5v9.5M6 13h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     </button>
   </div>
-  <span class="sep"></span>
-  <div class="group">
-    <label class="swatch" title="Colour (C)"><input type="color" id="color" value="#e5484d" aria-label="Colour (C)"><span id="swatchDot"></span></label>
+  <span class="sep" id="styleSep"></span>
+  <div class="group" id="styleBox">
+    <div id="palette" class="seg" role="radiogroup" aria-label="Colour (C)"></div>
     <div id="widths" class="seg" role="radiogroup" aria-label="Line thickness (1, 2, 3)">
       <button data-w="1" role="radio" aria-checked="false" title="Thin line (1)" aria-label="Thin (1)"><svg viewBox="0 0 20 16"><path d="M3 8h14" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></button>
       <button data-w="2" role="radio" aria-checked="true" title="Medium line (2)" aria-label="Medium (2)"><svg viewBox="0 0 20 16"><path d="M3 8h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
@@ -119,7 +119,7 @@
     <dl>
       <dt>Tools</dt>
       <dd><kbd>V</kbd> Select</dd><dd><kbd>H</kbd> Highlighter</dd><dd><kbd>R</kbd> Rectangle</dd><dd><kbd>O</kbd> Ellipse</dd><dd><kbd>T</kbd> Text box</dd>
-      <dd><kbd>C</kbd> Colour</dd><dd><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Thin, medium, thick</dd><dd><kbd>−</kbd> <kbd>+</kbd> Text size</dd>
+      <dd><kbd>C</kbd> Next colour</dd><dd><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Thin, medium, thick</dd><dd><kbd>−</kbd> <kbd>+</kbd> Text size</dd>
       <dt>Editing</dt>
       <dd><kbd>Ctrl Z</kbd> Undo</dd><dd><kbd>Ctrl Y</kbd> Redo</dd><dd><kbd>Del</kbd> Delete annotation</dd><dd><kbd>Esc</kbd> Deselect</dd>
       <dt>File</dt>
