@@ -21,6 +21,7 @@
       bytes: location.protocol === 'file:' ? readLocal(base) : null,
       started: performance.now(),
     };
+    globalThis.inkfoldReadLocal = () => readLocal(base);   // the file again, later (to check what Save wrote)
     import(base + 'lib/pdf.min.mjs').catch(() => {});
 
     const get = file => fetch(base + file).then(r => r.text());

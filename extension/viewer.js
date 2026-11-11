@@ -554,7 +554,7 @@ function notice({ text, yes, no, onYes }) {
 /* ---------- merging PDFs ---------- */
 
 // In the Pages and file panel: add PDFs, put them in order (drag the grip, or focus it and use ↑ ↓), and merge.
-// The open PDF, with its changes, is one of the items until it's removed. The merged file is a new file, saved
+// The open PDF, with its changes, is always one of the items. The merged file is a new file, saved
 // where you choose; the open PDF isn't changed.
 let mergeItems = [{ current: true }];
 
@@ -567,9 +567,13 @@ function drawMerge(focus = null) {
     const label = it.current ? 'This PDF' : it.name;
     const grip = el2('button', { type: 'button', class: 'grip', title: 'Drag to reorder (or ↑ ↓)', 'aria-label': `Move ${label}: ↑ or ↓` });
     grip.innerHTML = GRIP;
-    const rm = el2('button', { type: 'button', class: 'rm', title: 'Remove from the merge', 'aria-label': `Remove ${label}` });
-    rm.innerHTML = CROSS;
-    rm.onclick = () => { mergeItems.splice(k, 1); drawMerge(); };
+    // The open PDF always takes part (that's what's being merged into); the others can be taken out again.
+    const rm = it.current ? el2('span', { class: 'rm' })
+      : el2('button', { type: 'button', class: 'rm', title: 'Remove from the merge', 'aria-label': `Remove ${label}` });
+    if (!it.current) {
+      rm.innerHTML = CROSS;
+      rm.onclick = () => { mergeItems.splice(k, 1); drawMerge(); };
+    }
     const pagesN = it.current ? entries.length : it.pages;
     const count = it.error ? it.error : pagesN == null ? '…' : `${pagesN} page${pagesN === 1 ? '' : 's'}`;
     const li = el2('li', { class: (it.current ? 'current' : '') + (it.error ? ' bad' : '') },
@@ -599,11 +603,14 @@ function dragMerge(e, li, from) {   // drag a row up or down; the others make ro
   e.preventDefault();
   const list = $('mergeList'), rows = [...list.children], y0 = e.clientY;
   const h = li.getBoundingClientRect().height + 4;
+  // The row stays within the list: from the top of the first row to the bottom of the last.
+  const box = list.getBoundingClientRect(), me = li.getBoundingClientRect();
+  const minDy = box.top - me.top, maxDy = box.bottom - me.bottom;
   let to = from;
   li.classList.add('dragging');
   li.querySelector('.grip').setPointerCapture(e.pointerId);
   const onMove = ev => {
-    const dy = ev.clientY - y0;
+    const dy = clamp(ev.clientY - y0, minDy, maxDy);
     to = clamp(from + Math.round(dy / h), 0, rows.length - 1);
     li.style.transform = `translateY(${dy}px)`;
     rows.forEach((r, k) => {
@@ -747,13 +754,13 @@ function placeGhost() {
   m.ghost.style.transform = `translate(${m.x + 14}px, ${m.y + 14}px)`;
   const all = slots();
   if (!m.key) {   // the gap nearest the pointer (rows count before columns, so it doesn't jump across in two-page view)
+    const dist = sl => (sl.vertical ? Math.hypot(m.x - sl.x, Math.max(0, Math.abs(m.y - sl.y) - sl.len / 2) * 4)
+      : Math.hypot(Math.max(0, Math.abs(m.x - sl.x) - sl.len / 2) * 4, m.y - sl.y));
     let best = null, d = Infinity;
-    for (const sl of all) {
-      const dd = sl.vertical ? Math.hypot(m.x - sl.x, Math.max(0, Math.abs(m.y - sl.y) - sl.len / 2) * 4)
-        : Math.hypot(Math.max(0, Math.abs(m.x - sl.x) - sl.len / 2) * 4, m.y - sl.y);
-      if (dd < d) { d = dd; best = sl; }
-    }
-    m.slot = best.k;
+    for (const sl of all) { const dd = dist(sl); if (dd < d) { d = dd; best = sl; } }
+    // Only change gaps once the pointer is clearly nearer the new one, so the line doesn't flick back and forth.
+    const cur = all[m.slot], hold = Math.min(80, 0.15 * (cur?.vertical ? cur.r.width : cur?.r.height ?? 0));
+    if (!cur || best.k === m.slot || d + hold < dist(cur)) m.slot = best.k;
   }
   const sl = all[m.slot], L = m.line.style;
   const len = sl.vertical ? sl.len : sl.len + 24;
@@ -1319,38 +1326,56 @@ async function split() {
   let groups;
   try { groups = parseRanges($('splitRanges').value, entries.length); $('panelMsg').textContent = ''; }
   catch (e) { $('panelMsg').textContent = e.message; return; }
+  finishEdit();
   const base = name.replace(/\.pdf$/i, '');
-  let dir = null;
-  if (window.showDirectoryPicker) {   // pick the folder once, for all the files
-    try { dir = await showDirectoryPicker({ id: 'pdf-shapes-split', mode: 'readwrite', startIn: 'downloads' }); }
-    catch (e) { if (e.name === 'AbortError') return; }
-  }
+  const parts = groups.map(g => ({ g, file: `${base} (pages ${g.label}).pdf` }));
   $('panel').hidePopover();
+  // Each part gets its own save dialog, named and in the same folder as the last one, so it's mostly just Enter.
+  // (A folder picker would ask only once, but Chrome won't let a page save straight into Downloads, Documents or
+  // the Desktop that way, which is where most PDFs are.)
+  const saved = [];
   try {
-    const written = [];
-    for (const [k, g] of groups.entries()) {
-      say(`Splitting… ${k + 1} of ${groups.length}`, true);
-      const out = await build(g.idx.map(i => entries[i]));
-      const file = `${base} (pages ${g.label}).pdf`;
-      if (dir) written.push(await writeInto(dir, file, out));
-      else { download(out, file); written.push(file); }
+    for (const [k, part] of parts.entries()) {
+      let handle = null;
+      if (window.showSaveFilePicker) {
+        handle = await pickPart(part.file, k, parts.length, saved.length);
+        if (handle === 'stop') break;
+      }
+      say(`Splitting… part ${k + 1} of ${parts.length}`, true);
+      const out = await build(part.g.idx.map(i => entries[i]));
+      if (handle) {
+        const w = await handle.createWritable();
+        await w.write(out);
+        await w.close();
+        saved.push(handle.name);
+      } else {
+        download(out, part.file);
+        saved.push(part.file);
+      }
     }
-    say(dir ? `Saved ${written.length} files in “${dir.name}”.` : `Saved ${written.length} files to your downloads.`);
+    if (!saved.length) return say('Split cancelled.');
+    say(saved.length === parts.length
+      ? `Saved ${saved.length} files: ${saved.map(f => `“${f}”`).join(', ')}.`
+      : `Saved ${saved.length} of ${parts.length} parts: ${saved.map(f => `“${f}”`).join(', ')}.`, { long: true });
   } catch (e) {
     say(/encrypt/i.test(e.message) ? 'This PDF is encrypted, so it cannot be split.' : 'Could not split: ' + e.message, true);
   }
 }
 
-async function writeInto(dir, file, data) {   // never overwrite: "x.pdf" -> "x (2).pdf"
-  let pick = file;
-  for (let n = 2; ; n++) {
-    try { await dir.getFileHandle(pick); } catch { break; }
-    pick = file.replace(/\.pdf$/, ` (${n}).pdf`);
+// The save dialog for one part. Chrome only opens one shortly after a click, so when the moment has passed, a button
+// asks for the click that opens the next one. -> a file handle, or 'stop' if the dialog was cancelled.
+async function pickPart(file, k, n, done) {
+  const opts = { suggestedName: file, id: folderId(), types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] };
+  const ask = () => showSaveFilePicker(opts).catch(e => (e.name === 'AbortError' ? 'stop' : Promise.reject(e)));
+  try { return await ask(); }
+  catch {
+    return new Promise(resolve => {
+      say(`${done ? `Saved ${done} of ${n}. ` : ''}Next: part ${k + 1} of ${n}.`, {
+        sticky: true,
+        action: { label: `Save part ${k + 1}`, fn: () => ask().then(resolve, () => resolve('stop')) },
+      });
+    });
   }
-  const w = await (await dir.getFileHandle(pick, { create: true })).createWritable();
-  await w.write(data);
-  await w.close();
-  return pick;
 }
 
 /* ---------- annotations on screen ---------- */
@@ -1735,7 +1760,7 @@ function editText(p, s, fresh = false) {
   });
   ta.addEventListener('blur', () => finishEdit());
   for (const ev of ['pointerdown', 'mousedown', 'dblclick']) ta.addEventListener(ev, e => e.stopPropagation());
-  editing = { p, s, before, ta };
+  editing = { p, s, before, ta, fresh };
   p.div.append(ta);
   syncControls();
   paint(p);
@@ -1753,7 +1778,7 @@ function placeEditor() {
 
 function finishEdit() {
   if (!editing) return;
-  const { s, before, ta } = editing;
+  const { s, before, ta, fresh } = editing;
   editing = null;
   const text = ta.value.replace(/\s+$/, '');
   ta.remove();
@@ -1764,6 +1789,10 @@ function finishEdit() {
     if (sel === s) sel = null;
   }
   if (snapshot() !== before) commit(before);
+  if (fresh && tool === 'text') {   // a new box is done: back to the pointer, with the box selected to move or resize
+    setTool('select');
+    if (text.trim()) select(s);
+  }
   syncControls();
   repaint();
 }
@@ -1823,6 +1852,7 @@ function down(e, p) {
   } else if (tool === 'text') {                        // type into a box: an existing one, or a new one here
     e.preventDefault();
     const old = shapes[t.dataset.i];
+    if (editing && old?.type !== 'text') return finishEdit();   // a click away from the box being typed in just ends it
     const s = old?.type === 'text' ? old : { page: p.id, type: 'text', x1: at[0], y1: at[1], x2: at[0], y2: at[1], text: '', size: textSize, color: colors.text };
     pendingText = { p, s, fresh: s !== old };   // opened on release: the press itself still moves the focus
     return;
@@ -2101,7 +2131,7 @@ async function save() {
       await w.write(out);
       await w.close();
       const over = srcHandle ? await srcHandle.isSameEntry(handle).catch(() => false)
-        : !!srcUrl?.startsWith('file:') && handle.name === name;
+        : !!srcUrl?.startsWith('file:') && handle.name === name && await originalIs(out);
       say(over ? `Saved over “${handle.name}”.` : `Saved “${handle.name}”.`);
     } else {
       download(out, suggestedName);
@@ -2111,6 +2141,17 @@ async function save() {
   } catch (e) {
     say(/encrypt/i.test(e.message) ? 'This PDF is encrypted, so it cannot be saved.' : 'Could not save: ' + e.message, true);
   }
+}
+
+// For a PDF opened from its file:// address there's no file handle to compare with, and the same name could be in
+// another folder: so read the original again and see whether it's now exactly what was just saved.
+async function originalIs(data) {
+  try {
+    const now = new Uint8Array(IN_PAGE ? await globalThis.inkfoldReadLocal() : await fetchBytes(srcUrl));
+    if (now.length !== data.length) return false;
+    for (let i = 0; i < now.length; i++) if (now[i] !== data[i]) return false;
+    return true;
+  } catch { return false; }
 }
 
 function download(data, file) {
@@ -2605,8 +2646,32 @@ const KEYS = {
 const CTRL_KEYS = {
   's': save, 'f': () => openFind(), 'o': () => docs.has('main') || pickFile(),   // with a PDF open, there's no opening another one here
   'z': undo, 'y': redo, 'v': magicPaste,
-  '=': () => step(1), '+': () => step(1), '-': () => step(-1), '0': () => setZoom(1),
 };
+
+// Ctrl + / Ctrl − / Ctrl 0 (and Ctrl + the mouse wheel, or a pinch on a touchpad) zoom the pages, never the whole
+// window with its toolbar. They're caught first, whatever has the focus, and matched by the physical key, so they
+// work on any keyboard layout and with the number pad.
+const ZOOM_KEYS = { Equal: 1, NumpadAdd: 1, Minus: -1, NumpadSubtract: -1, Digit0: 0, Numpad0: 0 };
+addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const dir = ZOOM_KEYS[e.code] ?? { '+': 1, '=': 1, '-': -1, '_': -1, '0': 0 }[e.key];
+  if (dir === undefined) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (!pages.length || moving) return;
+  if (dir) step(dir); else setZoom(1);
+}, true);
+let wheelZoom = 0;
+addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  if (!pages.length || moving) return;
+  wheelZoom += -e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0025);   // lines or pixels
+  if (Math.abs(wheelZoom) < 0.02) return;
+  const z = clamp(zoom * Math.exp(wheelZoom), Z_MIN, Z_MAX);
+  wheelZoom = 0;
+  setZoom(z, null, true);
+}, { passive: false, capture: true });
 
 addEventListener('keydown', e => {
   if ($('dlg').open) return;

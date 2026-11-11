@@ -327,9 +327,9 @@ dialog .link:hover { background: none; }
 
 /* ---------- background work: compression offer, the gear's progress ring ---------- */
 #notice[hidden] { display: none; }
-#pagesBtn { position: relative; }
+#pagesBtn { position: relative; width: 28px; padding: 0; display: grid; place-items: center; }
 #pagesBtn .ring {
-  --p: 0; position: absolute; inset: 1px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .2s;
+  --p: 0; position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .2s;
   background: conic-gradient(var(--accent) calc(var(--p) * 1%), color-mix(in srgb, var(--accent) 16%, transparent) 0);
   mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
 }
@@ -437,7 +437,9 @@ body.moving .page { transition: opacity .15s; }
 .ghost span { font-size: 11px; font-weight: 600; color: var(--ink); }
 .dropline {
   position: fixed; left: 0; top: 0; z-index: 19; pointer-events: none; border-radius: 2px; background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); transition: transform .08s ease-out;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  transition: transform .32s cubic-bezier(.22, .9, .3, 1), width .32s, height .32s, background-color .2s;
+  animation: dropin .25s ease-out;
 }
 .dropline::before, .dropline::after {
   content: ''; position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
@@ -473,3 +475,4 @@ body.moving .page { transition: opacity .15s; }
 #mergeList li.dragging .grip { cursor: grabbing; }
 #mergeList li.bad .count { color: var(--danger); }
 #panel.dropping #mergeList, #panel.dropping .mergehead { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 8px; }
+@keyframes dropin { from { opacity: 0; } }

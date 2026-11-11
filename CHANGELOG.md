@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.11.1: fixes
+
+- **Save** no longer says "Saved over" when you save a file with the same name into a different folder. For a PDF opened from its file:// address (where Chrome gives no file handle to compare), Inkfold now reads the original back after saving and checks whether it's exactly what was written.
+- **Split** no longer runs into Chrome's "Can't open this folder because it contains system files". That message came from the folder picker, which Chrome doesn't allow for Downloads, Documents or the Desktop themselves. Each part now gets its own save dialog, already named and in the same folder as the last, so it's usually just Enter; if Chrome needs another click to open the next dialog, a "Save part 2" button appears.
+- **Ctrl +, Ctrl −, Ctrl 0** now always zoom the pages, never the whole window with its toolbar: they're caught first whatever has the focus (also while moving a page, with a dialog open, or in the find box), and recognised by the physical key, so they work with the number pad and on any keyboard layout. **Ctrl + mouse wheel** and touchpad pinch zoom the pages too.
+- **Gear icon** redrawn: a proper eight-tooth gear in the same line style as the other icons, on a square button (it was on a wider button and looked stretched); the progress ring is a circle again.
+- **Merge PDFs**: rows can only be dragged within the list, and "This PDF" can't be removed from it.
+- **Moving a page**: the drop line glides between gaps instead of jumping, fades in, and only moves to a new gap once the pointer is clearly nearer it, so it doesn't flicker between two.
+- **Text boxes and LaTeX**: math that spans lines (for example `$$` or `\[` on lines of their own, as copied from chat assistants and editors) now renders; `\[ … \]` is supported as display math. Magic paste's text box no longer breaks a formula when wrapping long lines, so its math renders the same as when pasting into a box you're typing in.
+- **Text tool**: after you finish a new text box, the tool goes back to the pointer, with the box selected. Clicking away from a box you're typing in just ends it, rather than starting another one.
+
 ## 2.11.0: move pages, merge PDFs, pictures as pages
 
 - **Move a page.** Right-click a page and choose **Move page** (or press M over it). The page lifts and a small copy of it follows the pointer; a line shows the gap it will drop into, between any two pages (or at either end, and between the two pages of a row in two-page view). Click to drop it. The window scrolls when you near its top or bottom. Arrow keys, Home and End move the line too; Enter drops, Esc cancels; Ctrl+Z puts it back.

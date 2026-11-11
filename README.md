@@ -71,8 +71,8 @@ Coming soon.
 | Add a note | Press <kbd>N</kbd> (or the note button, next to the picture button) and type the note. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. (For Markdown you copied, use **Magic paste**.) |
 | Change pages | Right-click a page to rotate it, delete it, move it or add a note after it. For several pages, press <kbd>P</kbd> (or the gear button) for the Pages and file panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Move a page | Right-click it and choose **Move page** (or press <kbd>M</kbd> over it). The page lifts, and a line follows the pointer between pages; click to drop it there. The window scrolls when you near its top or bottom edge. Arrow keys move the line too, <kbd>Enter</kbd> drops, <kbd>Esc</kbd> cancels, <kbd>Ctrl</kbd>+<kbd>Z</kbd> puts it back. |
-| Split | In the Pages and file panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
-| Merge | In the Pages and file panel, **Add PDFs…** (several at once, or drop them on the panel). Drag the grips (or focus one and press <kbd>↑</kbd> <kbd>↓</kbd>) to put them in order; the open PDF, with your changes, is in the list too. **Merge and save** asks where to save the new file. |
+| Split | In the Pages and file panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file; a save dialog opens for each, already named (`notes (pages 1-3).pdf`) and in the same folder as the last, so it's mostly just Enter. |
+| Merge | In the Pages and file panel, **Add PDFs…** (several at once, or drop them on the panel). Drag the grips (or focus one and press <kbd>↑</kbd> <kbd>↓</kbd>) to put them in order; the open PDF, with your changes, is in the list too. **Merge and save** asks where to save the new file. The open PDF can't be taken out of the list, and rows can only be dragged within it. |
 | Zoom | − / + step through the presets. Click the percentage for a card with Fit width, Fit page, a zoom slider and preset buttons. |
 | File status | The gear button's panel shows text recognition progress (with Stop) and how much smaller the file could be, with a Compress button. |
 | Reopen | A PDF opens where you left it: same page, same spot, same zoom (remembered for your last 300 PDFs). A link to a page, such as `…pdf#page=12`, still opens that page. |
@@ -82,7 +82,7 @@ Coming soon.
 
 | Tools | | View | |
 |---|---|---|---|
-| <kbd>V</kbd> | Select | <kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>Ctrl</kbd> <kbd>−</kbd> | Zoom in / out |
+| <kbd>V</kbd> | Select | <kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>Ctrl</kbd> <kbd>−</kbd> (or <kbd>Ctrl</kbd> + wheel, or pinch) | Zoom the pages in / out (the toolbar stays the same size) |
 | <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
 | <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
 | <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |

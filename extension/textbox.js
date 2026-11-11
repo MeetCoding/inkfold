@@ -23,13 +23,20 @@ const SWAP = { '→': '->', '←': '<-', '⇒': '=>', '≥': '>=', '≤': '<=', 
 export const cleanWith = set => s => [...s].map(ch => SWAP[ch] ?? (set.has(ch.codePointAt(0)) ? ch
   : /[​-‏︀-️]|\p{Extended_Pictographic}/u.test(ch) ? '' : '?')).join('');
 
+// Math: $$…$$ and \[…\] (display), \(…\) and $…$ (inline).
+const MATH = /\$\$([^$]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|(?<![\\$\w])\$(?=\S)([^$]*?\S)\$(?![\d$])/g;
+
+// Math copied from elsewhere often spans lines ($$ on a line of its own, say). Its line breaks become spaces,
+// so each formula stays in one piece; the rest of the text keeps its lines.
+export const joinMath = text => text.replace(/\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g, m => m.replace(/\s*\n\s*/g, ' '));
+
 // Splits a line into text and math runs.
 function runs(line) {
-  const out = [], re = /\$\$([^$]+?)\$\$|\\\(([\s\S]+?)\\\)|(?<![\\$\w])\$(?=\S)([^$]*?\S)\$(?![\d$])/g;
+  const out = [], re = new RegExp(MATH.source, 'g');
   let at = 0, m;
   while ((m = re.exec(line))) {
     if (m.index > at) out.push({ text: line.slice(at, m.index) });
-    out.push({ tex: (m[1] ?? m[2] ?? m[3]).trim(), display: m[1] !== undefined, src: m[0] });
+    out.push({ tex: (m[1] ?? m[2] ?? m[3] ?? m[4]).trim(), display: m[1] !== undefined || m[2] !== undefined, src: m[0] });
     at = m.index + m[0].length;
   }
   if (at < line.length) out.push({ text: line.slice(at) });
@@ -51,7 +58,7 @@ export function layout(text, size) {
     const k = size / 1000;   // MathJax units are 1/1000 em
     const lines = [];
     let y = PAD, w = 0;
-    for (const raw of text.split('\n')) {
+    for (const raw of joinMath(text).split('\n')) {
       const items = [];
       let x = PAD, asc = size * 0.78, desc = size * 0.24;
       for (const r of runs(raw)) {
@@ -151,9 +158,16 @@ export async function wrapText(text, size, maxW) {
   const { f, set } = await font();
   const clean = cleanWith(set), wOf = s => f.widthOfTextAtSize(clean(s), size);
   const out = [];
-  for (const para of text.split('\n')) {
+  for (const para of joinMath(text).split('\n')) {
     let line = '';
-    for (const word of para.split(/(?<=\s)/)) {   // words keep the space after them
+    // Words keep the space after them; a formula counts as one word, so it's never broken across lines.
+    const words = para.match(new RegExp(`(?:${MATH.source})\\s*|\\S+\\s*|\\s+`, 'g')) ?? [''];
+    for (const word of words) {
+      if (new RegExp(MATH.source).test(word)) {   // too wide or not, a formula goes on a line as a whole
+        if (line && wOf(line + word.trimEnd()) > maxW) { out.push(line.trimEnd()); line = ''; }
+        line += word;
+        continue;
+      }
       if (line && wOf(line + word.trimEnd()) > maxW) { out.push(line.trimEnd()); line = ''; }
       let w = word;
       while (wOf(w.trimEnd()) > maxW && w.length > 1) {   // a single word too long for a line
