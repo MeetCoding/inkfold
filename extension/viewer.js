@@ -1424,18 +1424,29 @@ $('spread').onclick = () => setSpread(!spread);
 $('full').onclick = toggleFull;
 
 // Full screen: the whole viewer, toolbar included. The same button (or Shift+F, or Esc) leaves it.
+// Chrome's own full screen (F11) is different: a page can't leave it, so the button says to press F11.
+const browserFull = () => !document.fullscreenElement && (matchMedia('(display-mode: fullscreen)').matches
+  // the window fills the screen and has no frame around the page (works at any page zoom)
+  || (Math.abs(screen.width - outerWidth) < 4 && Math.abs(screen.height - outerHeight) < 4
+    && Math.abs(outerWidth / innerWidth - outerHeight / innerHeight) < 0.01));
+
 function toggleFull() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else if (browserFull()) say('This is Chrome’s full screen (F11). Press F11 to leave it.');
   else document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => say('Chrome didn’t allow full screen here. Try F11 instead.'));
 }
-addEventListener('fullscreenchange', () => {
-  const on = !!document.fullscreenElement;
-  document.body.classList.toggle('full', on);
-  $('full').setAttribute('aria-pressed', on);
-  const label = on ? 'Exit full screen (Shift+F or Esc)' : 'Full screen (Shift+F)';
+function syncFull() {
+  const page = !!document.fullscreenElement, browser = !page && browserFull();
+  document.body.classList.toggle('full', page || browser);
+  $('full').setAttribute('aria-pressed', page || browser);
+  const label = page ? 'Exit full screen (Shift+F or Esc)' : browser ? 'Exit full screen (F11)' : 'Full screen (Shift+F)';
   $('full').title = label;
   $('full').setAttribute('aria-label', label);
-});
+}
+addEventListener('fullscreenchange', syncFull);
+addEventListener('resize', syncFull);
+matchMedia('(display-mode: fullscreen)').addEventListener?.('change', syncFull);
+syncFull();
 $('note').onclick = () => addNote();
 $('pagesBtn').onclick = () => togglePanel('panel', 'range');
 $('keysBtn').onclick = () => togglePanel('keys');

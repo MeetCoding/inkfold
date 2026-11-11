@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.1: full-screen button and F11
+
+- Fixed: after going full screen with Chrome's F11, the full-screen button seemed to stop working (it showed "enter full screen" and clicking it did nothing visible). It now recognises F11, shows the "exit" state, and says to press F11 to leave, since a page isn't allowed to end Chrome's own full screen. Once F11 is off, the button works as before.
+
 ## 2.2.0: eraser
 
 - **Eraser** (<kbd>E</kbd>) in the toolbar: click a highlight, rectangle, ellipse or text box to remove it, or drag across several to remove them all in one stroke (one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings the stroke back). Whatever the eraser would remove fades as you point at it. Shapes are caught by their outline, so clicking inside a rectangle doesn't remove it.
