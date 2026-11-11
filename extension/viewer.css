@@ -35,6 +35,8 @@ button.primary:hover { background: var(--ink); opacity: .88; }
 select { padding: 0 6px; }
 select:disabled { opacity: .35; cursor: default; }
 #zoom { width: 116px; font-variant-numeric: tabular-nums; }
+#full .exit, body.full #full .enter { display: none; }
+body.full #full .exit { display: block; }
 
 /* Segmented controls: line thickness, text size */
 .seg { display: flex; align-items: center; gap: 1px; padding: 2px; border-radius: 9px; background: var(--hover); }

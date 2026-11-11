@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.0: full screen
+
+- A **full screen** button next to two-page view (or <kbd>Shift</kbd>+<kbd>F</kbd>). In full screen the same button, <kbd>Shift</kbd>+<kbd>F</kbd> or <kbd>Esc</kbd> leaves it.
+
 ## 2.0.0: text recognition for scanned PDFs, and compression
 
 - **Text recognition (OCR)**: when you open a PDF with pages that have no text (a scan, photos of pages), Inkfold recognises the text in the background, with a small progress bar you can stop. The text becomes selectable and searchable, works with the highlighter and with assistants such as Gemini in Chrome, and copies you save contain it as invisible text, so they're searchable in any PDF reader. PDFs that already have text are left alone. It all runs on your computer, with the Tesseract engine and an English model bundled in the extension (about 7 MB).

@@ -21,7 +21,7 @@
 - **Markdown notes**: press <kbd>N</kbd>, then type a note or use the Markdown on your clipboard, and a new page with your formatted note appears after the current one. The page is as wide as the one before it and exactly as tall as the note. Headings, lists, checkboxes, tables, code, quotes and links all work.
 - **LaTeX math** in notes: `$inline$`, `$$display$$`, `\(…\)`, `\[…\]` and `align`-style environments, drawn as sharp vector shapes.
 - **Page tools**: right-click a page to rotate or delete it, or work on ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
-- **Fit width, fit page and two-page view**, with smooth resizing even on long documents. The toolbar shows the page you're on; type a number (or press <kbd>G</kbd>) to jump to any page.
+- **Fit width, fit page, two-page view and full screen**, with smooth resizing even on long documents. The toolbar shows the page you're on; type a number (or press <kbd>G</kbd>) to jump to any page.
 - **Text recognition (OCR)** for scanned PDFs: pages without text are read automatically in the background, with a small progress bar (you can stop it). The text becomes selectable, searchable and highlightable, and saved copies contain it as invisible text, so they're searchable everywhere. Runs entirely on your computer with the bundled [Tesseract](https://github.com/tesseract-ocr/tesseract) engine; English text. PDFs that already have text are left alone.
 - **Compression**: the first time you open a PDF that could be more than 20% smaller (usually because of oversized images), a small card offers to compress it. Copies you save are then smaller; nothing else changes.
 - **Selectable, searchable text** (Ctrl+F works), readable by screen readers and by assistants such as Gemini in Chrome. PDFs open in their own tab with their normal `https://` or `file://` address, so you can share them with Gemini in Chrome's side panel.
@@ -74,7 +74,7 @@ Coming soon.
 | <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
 | <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
 | <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |
-| <kbd>T</kbd> | Text box | | |
+| <kbd>T</kbd> | Text box | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
 | <kbd>C</kbd> | Next colour | <kbd>J</kbd> / <kbd>K</kbd> | Next / previous page |
 | | | <kbd>G</kbd> | Go to page number |
 | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |

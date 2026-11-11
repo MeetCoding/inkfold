@@ -1385,6 +1385,21 @@ $('zoom').onchange = e => {
   else if (v !== 'custom') setZoom(+v);
 };
 $('spread').onclick = () => setSpread(!spread);
+$('full').onclick = toggleFull;
+
+// Full screen: the whole viewer, toolbar included. The same button (or Shift+F, or Esc) leaves it.
+function toggleFull() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => say('Chrome didn’t allow full screen here. Try F11 instead.'));
+}
+addEventListener('fullscreenchange', () => {
+  const on = !!document.fullscreenElement;
+  document.body.classList.toggle('full', on);
+  $('full').setAttribute('aria-pressed', on);
+  const label = on ? 'Exit full screen (Shift+F or Esc)' : 'Full screen (Shift+F)';
+  $('full').title = label;
+  $('full').setAttribute('aria-label', label);
+});
 $('note').onclick = () => addNote();
 $('pagesBtn').onclick = () => togglePanel('panel', 'range');
 $('keysBtn').onclick = () => togglePanel('keys');
@@ -1528,6 +1543,7 @@ addEventListener('keydown', e => {
   if (typing && k === 'escape' && e.target.closest('.pop')) { e.preventDefault(); return KEYS.escape(); }
   if (typing) return;
   if (k === 'delete' && e.shiftKey) { e.preventDefault(); const ids = thisPage(); return ids && deletePages(ids); }
+  if (k === 'f' && e.shiftKey) { e.preventDefault(); return toggleFull(); }
   const fn = KEYS[e.key === '?' ? '?' : k];
   if (!fn) return;
   e.preventDefault();
