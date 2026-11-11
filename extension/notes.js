@@ -5,7 +5,9 @@
 // Text uses the PDF standard fonts, so characters outside Western European text are swapped or dropped.
 import { loadMath, hasMath, typeset, cssColor } from './math.js';
 
-export async function notePdf(md, W, H) {
+// With fit, the note is one page as wide as W and just as tall as its content (up to the PDF limit of
+// 14,400 pt, after which it continues on another page). H then only sets the margins.
+export async function notePdf(md, W, H, { fit = false } = {}) {
   const {
     PDFDocument, StandardFonts, PDFString, rgb,
     pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode,
@@ -37,13 +39,13 @@ export async function notePdf(md, W, H) {
 
   const BASE = 9.5, LEAD = 1.45;
   const m = Math.round(Math.min(72, Math.max(36, Math.min(W, H) * 0.09)));
-  const X0 = m, MAXW = W - 2 * m;
+  const X0 = m, MAXW = W - 2 * m, PH = fit ? 14400 : H;
   let page, y, links;
   const made = [];
-  const atTop = () => y >= H - m - 0.5;
+  const atTop = () => y >= PH - m - 0.5;
   const newPage = () => {
-    page = doc.addPage([W, H]);
-    y = H - m;
+    page = doc.addPage([W, PH]);
+    y = PH - m;
     links = [];
     made.push({ page, links });
   };
@@ -417,6 +419,13 @@ export async function notePdf(md, W, H) {
 
   const text = md.replace(/\r\n?/g, '\n').replace(/^﻿/, '');
   render(parse(text.split('\n')), { indent: 0, bars: [], color: C.ink });
+
+  if (fit) {   // trim the last page to the content: its box starts just below the last line
+    const bottom = Math.max(0, Math.floor(y - m)), top = PH;
+    const h = Math.max(top - bottom, Math.min(W, 2 * m + 24));
+    page.setMediaBox(0, top - h, W, h);
+    page.setCropBox(0, top - h, W, h);
+  }
 
   for (const { page: p, links: ls } of made) {   // clickable links
     for (const { rect, url } of ls) {

@@ -26,7 +26,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 
 **Marquee promo tile** (1400×560): `store/promo-marquee-1400x560.png`
 
-**Promo video:** the store takes a YouTube link. Upload `store/inkfold-promo.mp4` (36 s, 1280×720, no sound) to YouTube as Public or Unlisted, and paste its URL.
+**Promo video:** the store takes a YouTube link. Upload `store/inkfold-promo.mp4` (37 s, 1280×720, no sound) to YouTube as Public or Unlisted, and paste its URL.
 
 **Store icon** (128×128): `extension/icons/128.png`
 
@@ -45,7 +45,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 | Permission | Justification |
 |---|---|
 | `activeTab` | When the user clicks the toolbar icon on a tab showing a PDF, the viewer opens that PDF. |
-| `clipboardRead` | Reads clipboard text only when the user explicitly adds a note (button or N key), to turn their Markdown into a note page. The first time, a dialog shows exactly what will be used. |
+| `clipboardRead` | Reads clipboard text only when the user explicitly opens "Add a note" (button or N key). The dialog shows what was copied and lets the user choose it or type a note instead; nothing is used unless they confirm. |
 | `offscreen` | One offscreen document (reasons `CLIPBOARD` and `BLOBS`) does two things a PDF tab can't do itself: reads the clipboard when the user adds a note (reading it from a web PDF's tab would prompt on behalf of that website), and reads the bytes of a local `file://` PDF the user opened (a file:// page can't read its own file). Nothing is sent anywhere. |
 | `contextMenus` | A checkbox on the toolbar icon's right-click menu to turn automatic PDF opening on or off. |
 | `storage` | Remembers the automatic-opening setting. |
@@ -65,7 +65,7 @@ Run `scripts/package.sh` and upload `dist/inkfold-<version>.zip`.
 ```
 To test: open any PDF link on the web (for example the PDF of any arXiv paper). It opens in Inkfold.
 • Press H and drag across text to highlight it; R or O and drag to draw a shape; T and click to type a text box (LaTeX between $ signs works).
-• Copy any Markdown text, then press N to add a note page. A dialog explains this the first time.
+• Press N to add a note page: type Markdown, or use what's on the clipboard.
 • Right-click a page to rotate or delete it; press P to work on ranges or split. Ctrl+S saves a new copy.
 Automatic opening can be turned off from the toolbar icon's right-click menu. No account or setup is needed.
 ```

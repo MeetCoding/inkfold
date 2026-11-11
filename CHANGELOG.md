@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.0: type notes, and note pages sized to fit
+
+- **Add a note** (<kbd>N</kbd> or **+ Note**) now opens a dialog: type the note right there, or use the Markdown on your clipboard. The clipboard option shows what you copied, and is unavailable when the clipboard has no text. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds the note.
+- Note pages are as wide as the page they follow and exactly as tall as the note, so a short note is a short page and a long one is a single long page, instead of always being A4/Letter-sized.
+
 ## 1.9.1: fixed text boxes vanishing; a set of standard colours
 
 - Fixed: clicking with the text tool opened a text box that disappeared a moment later (with an ordinary-speed click). Every click anywhere was also quietly re-selecting the current tool, which closed the box; that's gone too.

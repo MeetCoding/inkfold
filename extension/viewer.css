@@ -189,6 +189,21 @@ dialog {
   border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
 }
 dialog::backdrop { background: rgb(0 0 0 / .28); }
+dialog.wide { width: 560px; }
+dialog .opt { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 6px; padding: 8px 10px; border-radius: 9px; cursor: pointer; }
+dialog .opt:hover { background: var(--hover); }
+dialog .opt.off { opacity: .55; cursor: default; }
+dialog .opt.off:hover { background: none; }
+dialog .opt input { margin: 3px 0 0; accent-color: var(--accent); }
+dialog .opt span { display: grid; gap: 2px; }
+dialog .opt small { color: var(--dim); font-size: 12px; }
+dialog .notetext {
+  width: 100%; margin: 2px 0 12px; padding: 10px 12px; resize: vertical; font: 12.5px/1.5 ui-monospace, monospace;
+  color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+}
+dialog .notetext:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+dialog .opt + .preview { margin-top: 0; }
+button:disabled { opacity: .45; cursor: default; }
 dialog p { margin: 0 0 10px; }
 dialog ul { margin: 0 0 10px; padding-left: 18px; }
 dialog li { margin-bottom: 6px; }

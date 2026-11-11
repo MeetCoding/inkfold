@@ -406,35 +406,54 @@ function deletePages(ids) {
 
 async function addNote(after = currentIndex()) {
   if (!pages.length) return;
-  let md = '';
-  try {
-    md = IN_PAGE ? await chrome.runtime.sendMessage({ type: 'readClipboard' }) : await navigator.clipboard.readText();
-    if (md == null) throw 0;
-  } catch { return say('Chrome didn’t allow reading the clipboard. Click the page, then try again.'); }
-  if (!md.trim()) return say('Your clipboard has no text. Copy some Markdown first, then add the note (N).');
-  if (!store.get('seen-note-intro', false)) {
-    const ok = await ask({
-      title: 'Add a note from your clipboard?',
-      body: [
-        para(`This adds a new page after page ${after + 1}, made from the text currently on your clipboard:`),
-        el2('div', { class: 'preview' }, md.length > 600 ? md.slice(0, 600) + '…' : md),
-        para('Markdown and LaTeX math are supported. The clipboard is only read when you add a note, and nothing leaves your computer. Undo (Ctrl+Z) removes the note.'),
-      ],
-      ok: 'Add note',
-    });
-    if (!ok) return;
-    store.set('seen-note-intro', true);
-  }
+  const md = await noteSource(after);
+  if (!md?.trim()) return;
   say('Adding note…', true);
+  // As wide as the page it follows; as tall as the note needs.
   const ref = pages[after], { width, height } = ref.page.getViewport({ scale: 1, rotation: rotationOf(ref) });
   const key = 'note' + nextId++;
-  const doc = await loadDoc(key, await notePdf(md, Math.round(width), Math.round(height)));
+  const doc = await loadDoc(key, await notePdf(md, Math.round(width), Math.round(height), { fit: true }));
   const added = doc.pages.map((_, i) => ({ id: nextId++, doc: key, i, rot: 0 }));
   changePages(() => { entries.splice(after + 1, 0, ...added); });
   doc.pages.forEach((_, i) => textLayer(views.get(added[i].id)));
   views.get(added[0].id).div.scrollIntoView({ block: 'start' });
   say(added.length > 1 ? `Added a ${added.length}-page note after page ${after + 1}.` : `Added a note after page ${after + 1}.`,
     { action: { label: 'Undo', fn: undo } });
+}
+
+// Where the note comes from: typed here, or the clipboard (offered only when it holds text).
+async function noteSource(after) {
+  let clip = '', blocked = false;
+  try { clip = (IN_PAGE ? await chrome.runtime.sendMessage({ type: 'readClipboard' }) : await navigator.clipboard.readText()) ?? ''; }
+  catch { blocked = true; }
+  const has = !!clip.trim();
+  const rClip = el2('input', { type: 'radio', name: 'noteSrc', value: 'clip' });
+  const rType = el2('input', { type: 'radio', name: 'noteSrc', value: 'type' });
+  const ta = el2('textarea', {
+    class: 'notetext', rows: '8', spellcheck: 'true', 'aria-label': 'Your note',
+    placeholder: '# A heading\n\nSome **bold** text, a list:\n- one\n- two\n\nand math, like $E = mc^2$.',
+  });
+  rClip.disabled = !has;
+  rClip.checked = has;
+  rType.checked = !has;
+  const update = () => { $('dlgOk').disabled = rType.checked ? !ta.value.trim() : !has; };
+  for (const r of [rClip, rType]) r.onchange = () => { update(); if (rType.checked) ta.focus(); };
+  ta.addEventListener('focus', () => { rType.checked = true; update(); });
+  ta.addEventListener('input', update);
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !$('dlgOk').disabled) { e.preventDefault(); $('dlgOk').click(); } });
+  const clipNote = blocked ? 'Chrome didn’t let Inkfold read the clipboard.' : has ? '' : 'Your clipboard has no text.';
+  const body = [
+    el2('label', { class: 'opt' + (has ? '' : ' off') }, rClip, el2('span', {}, el2('strong', {}, 'Use the clipboard'), el2('small', {}, clipNote || 'The Markdown you copied, as it is.'))),
+    ...(has ? [el2('div', { class: 'preview' }, clip.length > 400 ? clip.slice(0, 400) + '…' : clip)] : []),
+    el2('label', { class: 'opt' }, rType, el2('span', {}, el2('strong', {}, 'Type a note'), el2('small', {}, 'Markdown and LaTeX ($…$) work here too. Ctrl+Enter adds it.'))),
+    ta,
+  ];
+  const answer = ask({ title: `Add a note after page ${after + 1}`, body, ok: 'Add note', wide: true });
+  update();
+  if (!has) ta.focus();
+  const ok = await answer;
+  $('dlgOk').disabled = false;
+  return ok ? (rType.checked ? ta.value : clip) : null;
 }
 
 // "2-4, 7, 10-end" -> [{ label: '2-4', idx: [1, 2, 3] }, { label: '7', idx: [6] }, …]
@@ -1082,8 +1101,9 @@ function el2(tag, attrs, ...kids) {
 }
 
 // A small modal: resolves true for the main button, false for Cancel / Escape.
-function ask({ title, body, ok = 'OK', cancel = 'Cancel' }) {
+function ask({ title, body, ok = 'OK', cancel = 'Cancel', wide = false }) {
   const d = $('dlg');
+  d.classList.toggle('wide', wide);
   $('dlgTitle').textContent = title;
   $('dlgBody').replaceChildren(...body);
   $('dlgOk').textContent = ok;

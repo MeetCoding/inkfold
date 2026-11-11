@@ -41,7 +41,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 });
 
 // Two things a PDF tab can't do itself, done in a hidden extension page:
-// • read the clipboard (from a web page, Chrome would ask on behalf of that website), only when adding a note;
+// • read the clipboard (from a web page, Chrome would ask on behalf of that website), only when the user opens "Add a note";
 // • read a local PDF's bytes (a file:// page can't read its own file), only for the PDF open in that tab.
 async function offscreen(msg) {
   if (!(await chrome.offscreen.hasDocument?.())) {

@@ -18,7 +18,7 @@
 - **Highlighter** that follows the lines of real text, in any colour.
 - **Rectangles and ellipses** to mark up figures, tables or anything else. Move and resize them any time.
 - **Text boxes** with **LaTeX**: press <kbd>T</kbd>, click and type. Put math between `$` signs (`$\frac{a}{b}$`) and it's typeset as you finish. Pick any colour and size; the font is Helvetica, so the box looks the same in every PDF viewer.
-- **Markdown notes**: copy Markdown, press <kbd>N</kbd>, and a new page with your formatted note appears after the current one. Headings, lists, checkboxes, tables, code, quotes and links all work.
+- **Markdown notes**: press <kbd>N</kbd>, then type a note or use the Markdown on your clipboard, and a new page with your formatted note appears after the current one. The page is as wide as the one before it and exactly as tall as the note. Headings, lists, checkboxes, tables, code, quotes and links all work.
 - **LaTeX math** in notes: `$inline$`, `$$display$$`, `\(…\)`, `\[…\]` and `align`-style environments, drawn as sharp vector shapes.
 - **Page tools**: right-click a page to rotate or delete it, or work on ranges like `2-4, 7, 10-end`, and **split** a PDF into several files in one go.
 - **Fit width, fit page and two-page view**, with smooth resizing even on long documents. The toolbar shows the page you're on; type a number (or press <kbd>G</kbd>) to jump to any page.
@@ -59,7 +59,7 @@ Coming soon.
 | Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Pick one of five colours in the toolbar (<kbd>C</kbd> for the next), thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
 | Write | <kbd>T</kbd>, then click where the text should go and type. <kbd>Enter</kbd> starts a new line; <kbd>Esc</kbd> or a click outside finishes. `$…$` is LaTeX. Text size with <kbd>−</kbd> / <kbd>+</kbd>. To change a box later, double-click it (or click it with <kbd>T</kbd>); drag it to move it. |
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, click the bin at its corner or press <kbd>Del</kbd>. |
-| Add a note | Copy Markdown, then press <kbd>N</kbd> (or **+ Note**). It's added after the page under your pointer. |
+| Add a note | Press <kbd>N</kbd> (or **+ Note**), then type the note or choose **Use the clipboard** (offered when it holds text). <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. |
 | Change pages | Right-click a page to rotate it, delete it or add a note after it. For several pages, press <kbd>P</kbd> for the Pages panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Split | In the Pages panel, type ranges such as `1-3, 4-8, 9-end`. Each range becomes its own file in a folder you choose. |
 | Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> saves a new copy wherever you choose. Your original file is never changed. |
@@ -78,7 +78,7 @@ Coming soon.
 | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |
 | <kbd>−</kbd> / <kbd>+</kbd> | Smaller / larger text | | |
 | **Editing** | | **Pages** | |
-| <kbd>Ctrl</kbd> <kbd>Z</kbd> | Undo | <kbd>N</kbd> | Note from clipboard |
+| <kbd>Ctrl</kbd> <kbd>Z</kbd> | Undo | <kbd>N</kbd> | Add a note |
 | <kbd>Ctrl</kbd> <kbd>Y</kbd> | Redo | <kbd>[</kbd> / <kbd>]</kbd> | Rotate page left / right |
 | <kbd>Del</kbd> | Delete annotation | <kbd>Shift</kbd> <kbd>Del</kbd> | Delete page |
 | <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages panel |
@@ -104,7 +104,7 @@ Inkfold runs entirely in your browser. It has no servers, no accounts, no analyt
 |---|---|
 | Read and change data on all websites (`<all_urls>`) | A tiny script checks whether each page is a PDF; only if it is does Inkfold replace Chrome's PDF viewer in that tab. Other pages are never read or changed. It also lets Inkfold load the PDF you opened from whichever site it's on. |
 | `activeTab` | To open the PDF in the current tab when you click the toolbar icon. |
-| `clipboardRead` and `offscreen` | To read the Markdown you copied, only at the moment you add a note, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
+| `clipboardRead` and `offscreen` | To offer the Markdown you copied, read only when you open **Add a note**, through the extension so Chrome doesn't ask on behalf of the website you're viewing. The same hidden page reads a local PDF's bytes when you open it from your computer, because a `file://` page can't read its own file. |
 | `contextMenus` | The right-click option on the toolbar icon to turn automatic opening on or off. |
 | `storage` | To remember your settings. |
 
