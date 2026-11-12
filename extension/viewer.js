@@ -47,12 +47,15 @@ let tool = 'select', sel = null, drag = null, pick = null, dirty = false, msgTim
 let zoom = 1, fit = store.get('fit', 'auto'), spread = store.get('spread', false);
 let lineWidth = store.get('width', 2);
 let fillShapes = store.get('fill', false);   // new rectangles and ellipses: filled or just outlined
-// A few standard colours: light ones for the highlighter (ink shows through), strong ones for shapes and text.
+// A few standard colours: light ones for the highlighter (ink shows through), strong ones for text, and for
+// shapes white as well (a filled white box covers something up).
 const PALETTES = {
   highlight: [['Yellow', '#ffd400'], ['Green', '#9be28f'], ['Blue', '#8fc7ff'], ['Pink', '#ff9ccb'], ['Orange', '#ffb561']],
-  ink: [['Red', '#e5484d'], ['Orange', '#e8590c'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
+  shape: [['Red', '#e5484d'], ['White', '#ffffff'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
+  text: [['Red', '#e5484d'], ['Orange', '#e8590c'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
 };
 const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}) };
+if (colors.shape === '#e8590c') colors.shape = '#ffffff';   // orange left the shape colours; white took its place
 let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null, erasing = null, eraseHover = null;
 const imgs = new Map();         // image key -> { src: data URL, w, h (pixels), mime }
 let nextImg = 1;
@@ -2089,7 +2092,7 @@ function syncUndo() {   // the buttons are greyed out when there's nothing to un
 
 const kind = () => { const t = sel ? sel.type : tool; return t === 'highlight' || t === 'text' ? t : 'shape'; };
 
-const palette = () => PALETTES[kind() === 'highlight' ? 'highlight' : 'ink'];
+const palette = () => PALETTES[kind()];
 const curColor = () => (sel?.color ?? colors[kind()]).toLowerCase();
 
 function syncControls() {   // the colour and thickness boxes show the selection, or the defaults for the tool
@@ -2097,8 +2100,9 @@ function syncControls() {   // the colour and thickness boxes show the selection
   const styling = ((tool !== 'select' && tool !== 'eraser') || !!sel) && sel?.type !== 'image';
   $('styleBox').hidden = $('styleSep').hidden = !styling;
   const pal = palette(), box = $('palette');
-  if (box.dataset.set !== pal[0][1]) {   // rebuild when switching between highlighter and ink colours
-    box.dataset.set = pal[0][1];
+  const set = pal.map(([, c]) => c).join();
+  if (box.dataset.set !== set) {   // rebuild when switching between highlighter, shape and text colours
+    box.dataset.set = set;
     box.replaceChildren(...pal.map(([n, c]) => {
       const b = el2('button', { type: 'button', role: 'radio', 'data-c': c, title: `${n} (C for the next colour)`, 'aria-label': n }, el2('span', { class: 'dot' }));
       b.firstChild.style.background = c;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.13.2: white for shapes
+
+- Rectangles and ellipses now come in red, **white**, green, blue and black (white replaces orange). A filled white box covers something up on the page. Text boxes keep their colours, orange included. If orange was your last shape colour, new shapes start in white.
+
 ## 2.13.1: clearer cropping
 
 - **Crop handles show from the start.** The corner brackets and edge bars now sit just inside the box, in the accent colour with a white rim, so they're visible even while the box covers the whole page (before, they were clipped at the page's edge and only appeared after Trim margins). They pulse briefly, with a "Drag the corners or edges" hint until the first drag.
