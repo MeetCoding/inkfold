@@ -2212,12 +2212,17 @@ function startCrop(p) {
   const had = p.e.crop;
   p.cropping = true;
   size(p);
+  // The whole page should be in view, clear of the crop bar: zoom out for a moment if it isn't (put back after).
+  const roomH = innerHeight - header.offsetHeight - 100, roomW = document.documentElement.clientWidth - 48;
+  const over = Math.max(p.vp.height / roomH, p.vp.width / roomW), before = { zoom, fit };
+  if (over > 1) setZoom(zoom / over, null, false, true);
   render(p);
-  const v = p.vp, box = had ? fractionsOf(p, had) : [0, 0, 1, 1];
-  const ui = el2('div', { class: 'cropper' }, el2('div', { class: 'crop-box' },
-    ...['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(h => el2('i', { 'data-h': h })), el2('b', { class: 'thirds' })));
+  const box = had ? fractionsOf(p, had) : [0, 0, 1, 1];
+  const ui = el2('div', { class: 'cropper fresh' }, el2('div', { class: 'crop-box' },
+    el2('b', { class: 'thirds' }), el2('span', { class: 'crop-hint' }, 'Drag the corners or edges'),
+    ...['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(h => el2('i', { 'data-h': h }))));
   p.div.append(ui);
-  cropping = { p, box, ui };
+  cropping = { p, box, ui, before: over > 1 ? before : null };
   ui.addEventListener('pointerdown', cropDrag);
   drawCrop();
   $('cropTitle').textContent = `Crop page ${pages.indexOf(p) + 1}`;
@@ -2225,20 +2230,28 @@ function startCrop(p) {
   $('cropbar').hidden = false;
   document.body.classList.add('cropping');
   const r = p.div.getBoundingClientRect();
-  if (r.top < header.offsetHeight || r.bottom > innerHeight - 70) p.div.scrollIntoView({ block: r.height > innerHeight - 140 ? 'start' : 'center', behavior: 'smooth' });
+  if (r.top < header.offsetHeight + 8 || r.bottom > innerHeight - 76) p.div.scrollIntoView({ block: 'center', behavior: over > 1 ? 'instant' : 'smooth' });
   $('cropOk').focus();
 }
 
 function endCrop() {
   if (!cropping) return;
-  const { p, ui } = cropping;
+  const { p, ui, before } = cropping;
   cropping = null;
   ui.remove();
   $('cropbar').hidden = true;
   document.body.classList.remove('cropping');
   p.cropping = false;
   size(p);
+  if (before) setZoom(before.fit === 'width' || before.fit === 'page' ? fitZoom(before.fit) : before.zoom, before.fit, false, true);
   render(p);
+  if (before) inView(p);
+}
+
+// Bring a page into view: centred if it fits the window, else its top just under the toolbar.
+function inView(p) {
+  const tall = p.div.getBoundingClientRect().height > innerHeight - header.offsetHeight - 24;
+  p.div.scrollIntoView({ block: tall ? 'start' : 'center', behavior: 'instant' });
 }
 
 const sameSize = (q, p) => q.page.view.every((v, i) => Math.abs(v - p.page.view[i]) < 1) && rotationOf(q) === rotationOf(p);
@@ -2273,6 +2286,7 @@ function cropDrag(ev) {
   let h = ev.target.dataset.h ?? (ev.target.closest('.crop-box') ? 'move' : 'new');
   if (h === 'new') { cropping.box = [start[0], start[1], start[0], start[1]]; h = 'se'; from.splice(0, 4, ...cropping.box); }
   ui.classList.add('dragging');
+  ui.classList.remove('fresh');
   ui.setPointerCapture(ev.pointerId);
   const move = e => {
     const [x, y] = at(e), dx = x - start[0], dy = y - start[1];
@@ -2330,6 +2344,7 @@ async function trimCrop() {
   if (x1 < 0) return say('This page looks blank, so there are no margins to trim.');
   const pad = 12 * vp.scale;   // about 12 points of air
   cropping.box = [Math.max(0, x0 - pad) / W, Math.max(0, y0 - pad) / H, Math.min(W, x1 + 1 + pad) / W, Math.min(H, y1 + 1 + pad) / H];
+  cropping.ui.classList.remove('fresh');
   drawCrop();
 }
 
@@ -2342,6 +2357,7 @@ function applyCrop(all = false) {
   changePages(() => {
     for (const q of targets) { if (crop) q.e.crop = crop; else delete q.e.crop; }
   });
+  inView(p);
   if (all) say(crop ? `Cropped ${targets.length} pages the same way.` : `Showing ${targets.length} pages whole again.`);
   else if (crop) say(`Cropped page ${pages.indexOf(p) + 1}. Ctrl+Z brings it back.`);
 }

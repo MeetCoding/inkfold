@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.13.1: clearer cropping
+
+- **Crop handles show from the start.** The corner brackets and edge bars now sit just inside the box, in the accent colour with a white rim, so they're visible even while the box covers the whole page (before, they were clipped at the page's edge and only appeared after Trim margins). They pulse briefly, with a "Drag the corners or edges" hint until the first drag.
+- **The whole page is in view while cropping**: if it doesn't fit above the crop bar, Inkfold zooms out for the moment and puts your zoom back afterwards, then lines the page up under the toolbar.
+
 ## 2.13.0: filled shapes, cropping pages
 
 - **Filled rectangles and ellipses**: an outline/filled choice sits next to the line thickness when drawing or with a shape selected, shaped like the current tool. Pressing <kbd>R</kbd> or <kbd>O</kbd> (or clicking the tool) again switches between them, and the tool's button fills in to show it. Filled shapes are saved as standard Square/Circle annotations with an interior colour, so other viewers fill them too, and they can be selected or erased anywhere inside.
