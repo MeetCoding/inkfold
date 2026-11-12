@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.14.0: fixes and hardening
+
+Fixed:
+- **Filled shapes stay filled.** A filled rectangle or ellipse was saved correctly, but when the PDF was opened again Inkfold read it back as outlined (pdf.js doesn't pass on the fill colour), so the next save lost the fill. Inkfold now reads the fill from the file itself.
+- **Find keeps the focus.** Tab and Shift+Tab go round the find box's own controls and results; Shift+Tab from the search box no longer jumps out to the toolbar.
+- **Save never goes to the wrong file.** Opening another PDF and then cancelling ("Discard your changes?") or failing to read it left Save pointing at the new file while the old one was on screen. The file Save writes to now changes only once the new PDF is open. Opening two files in quick succession can no longer mix them up either. The "discard changes" question is now Inkfold's own dialog.
+- **One save at a time.** Pressing Save (or Split, or Merge) again while it's still working no longer writes the same file twice at once.
+- **Text recognition carries on past a bad page** instead of stopping for the whole PDF; it gives up only if pages keep failing.
+- **Notes and image pages**: if a note or a picture can't be made into a page, Inkfold says so instead of leaving "Adding note…" on screen.
+- Images and pasted text boxes on a **cropped page** are placed within what's shown.
+- An SVG picture without a size of its own comes in at a sensible size instead of 1×1 pixel.
+- Dropping a PDF onto one that's open now says where to drop it to merge.
+
+Security:
+- Text pasted into a text box as HTML only is read with an inert parser, so nothing in it can run in the PDF's tab.
+- Colours inside formulas (`\color{…}`) are turned into plain colour values before they're drawn, so a crafted PDF can't slip markup into the page through a text box.
+
+Robustness and memory:
+- Page images scrolled away from give their memory back at once, which keeps long PDFs lighter.
+- Undo keeps the last 300 steps; remembered files (for saving without the dialog) are capped at the 300 most recent.
+- The text recognition worker is shut down properly if it fails, and a fresh one starts with the next page.
+- If Inkfold can't take over a PDF tab (for instance just after the extension updates), the tab falls back to Chrome's own viewer instead of staying blank.
+- Find can light up any number of matches (a very common word in a long PDF could fail before).
+- Compression leaves pictures with colour-key transparency alone, so their transparent colour stays exact.
+
 ## 2.13.2: white for shapes
 
 - Rectangles and ellipses now come in red, **white**, green, blue and black (white replaces orange). A filled white box covers something up on the page. Text boxes keep their colours, orange included. If orange was your last shape colour, new shapes start in white.

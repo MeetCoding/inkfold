@@ -92,9 +92,18 @@ export function layout(text, size) {
   return job;
 }
 
+// Any colour (from the palette, a PDF, or \color{…} in a formula) as a plain #rrggbb, so nothing but a colour
+// ever reaches the markup below; anything unrecognised is the text colour.
+const hex = (c, fallback) => {
+  const v = cssColor(c);
+  return v ? '#' + v.map(x => Math.round(clampByte(x * 255)).toString(16).padStart(2, '0')).join('') : fallback;
+};
+const clampByte = v => Math.min(255, Math.max(0, v || 0));
+
 // The laid-out box as SVG markup, in points (the caller positions and scales it).
 export function svgOf(L, color) {
-  const esc = s => s.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
+  const esc = s => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  color = hex(color, '#000000');
   let out = '';
   for (const line of L.lines) {
     for (const it of line.items) {
@@ -105,10 +114,10 @@ export function svgOf(L, color) {
       const top = line.base - it.math.asc * it.k;
       out += `<g transform="translate(${it.x} ${top}) scale(${it.k})">`;
       for (const g of it.math.items) {
-        const c = g.fill && g.fill !== 'currentColor' ? g.fill : color;
-        if (g.d) out += `<path d="${g.d}" fill="${c}"/>`;
-        else if (g.line) out += `<line x1="${g.line[0]}" y1="${g.line[1]}" x2="${g.line[2]}" y2="${g.line[3]}" stroke="${c}" stroke-width="${g.width}"/>`;
-        else if (g.text) out += `<text x="${g.x}" y="${g.y}" font-family='${FONT_STACK}' font-size="${g.size}" fill="${c}">${esc(g.text)}</text>`;
+        const c = g.fill && g.fill !== 'currentColor' ? hex(g.fill, color) : color;
+        if (g.d) out += `<path d="${esc(g.d)}" fill="${c}"/>`;
+        else if (g.line) out += `<line x1="${+g.line[0]}" y1="${+g.line[1]}" x2="${+g.line[2]}" y2="${+g.line[3]}" stroke="${c}" stroke-width="${+g.width}"/>`;
+        else if (g.text) out += `<text x="${+g.x}" y="${+g.y}" font-family='${FONT_STACK}' font-size="${+g.size}" fill="${c}">${esc(g.text)}</text>`;
       }
       out += '</g>';
     }

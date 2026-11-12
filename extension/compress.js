@@ -35,7 +35,7 @@ export async function compressPdf(bytes, { onProgress } = {}) {
     try {
       if (sub === '/Image') {
         if (o.contents.length < MIN_IMAGE_BYTES || masks.has(ref.toString())) continue;
-        const out = await recodeImage(o, d, filters, { N, decodePDFRawStream, ctx });
+        const out = await recodeImage(o, d, filters, { N, decodePDFRawStream, ctx, lib });
         if (out && out.length < o.contents.length * 0.8) {
           const keep = {};
           for (const [k, v] of d.entries()) {
@@ -59,8 +59,9 @@ export async function compressPdf(bytes, { onProgress } = {}) {
 }
 
 // -> { bytes, w, h, length } or null when the image is better left alone.
-async function recodeImage(o, d, filters, { N, decodePDFRawStream, ctx }) {
+async function recodeImage(o, d, filters, { N, decodePDFRawStream, ctx, lib }) {
   if (d.has(N('Decode')) || d.has(N('SMaskInData')) || String(d.lookup(N('ImageMask')) ?? '') === 'true') return null;
+  if (d.lookup(N('Mask')) instanceof lib.PDFArray) return null;   // colour-key transparency needs exact colours, so no JPEG
   const w = d.lookup(N('Width'))?.asNumber?.(), h = d.lookup(N('Height'))?.asNumber?.();
   const bpc = d.lookup(N('BitsPerComponent'))?.asNumber?.();
   if (!w || !h || bpc !== 8) return null;

@@ -7,8 +7,20 @@
   async function start() {
     if (started) return true;
     started = true;
+    try { return await takeOver(); }
+    catch {   // e.g. the extension was updated while this tab was open: give Chrome's own viewer back
+      document.getElementById('inkfold-cover')?.remove();
+      if (!document.querySelector('body.loaded, body.opening')) { started = false; return false; }
+      try { sessionStorage.setItem('inkfold-failed', '1'); } catch {}   // reload once, into Chrome's viewer
+      location.reload();
+      return false;
+    }
+  }
+
+  async function takeOver() {
     // Hide Chrome's own viewer straight away, in Inkfold's background colour, so it doesn't flash up first.
     const cover = document.createElement('style');
+    cover.id = 'inkfold-cover';
     cover.textContent = 'html { background: #ebe9e4 !important } body > * { visibility: hidden !important }'
       + '@media (prefers-color-scheme: dark) { html { background: #1b1b19 !important } }';
     document.documentElement.append(cover);
@@ -18,7 +30,7 @@
     // the PDF reader's worker, the PDF reader itself, and (for a file on this computer) the file's bytes.
     globalThis.inkfoldEarly = {
       worker: startWorker(base + 'lib/pdf.worker.min.mjs'),
-      bytes: location.protocol === 'file:' ? readLocal(base) : null,
+      bytes: location.protocol === 'file:' ? quiet(readLocal(base)) : null,
       started: performance.now(),
     };
     globalThis.inkfoldReadLocal = () => readLocal(base);   // the file again, later (to check what Save wrote)
@@ -47,6 +59,8 @@
     await import(base + 'viewer.js');
     return true;
   }
+
+  const quiet = p => { p.catch(() => {}); return p; };   // the viewer handles a failure; nothing to report here
 
   // pdf.js reads PDFs in a worker. A page can't start a worker from the extension's address, but it can from a copy
   // of the script. Local files (file://) have an opaque origin, where Chrome refuses module workers made from a copy;
@@ -103,5 +117,7 @@
     start().then(reply, () => reply(false));
     return true;
   });
-  chrome.storage.local.get({ auto: true }).then(({ auto }) => { if (auto) start(); });
+  let failedBefore = false;   // Inkfold couldn't take this tab over last time: leave it to Chrome until asked
+  try { failedBefore = sessionStorage.getItem('inkfold-failed') === '1'; sessionStorage.removeItem('inkfold-failed'); } catch {}
+  if (!failedBefore) chrome.storage.local.get({ auto: true }).then(({ auto }) => { if (auto) start(); }).catch(() => {});
 })();

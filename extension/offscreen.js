@@ -27,7 +27,12 @@ function ocr(image) {
       // A minute with nothing to read: let the worker go, giving back the memory its models and threads use.
       if (!waiting.size) idle = setTimeout(() => { if (!waiting.size) { worker?.terminate(); worker = null; } }, 60_000);
     };
-    worker.onerror = e => { for (const w of waiting.values()) w.no(new Error(e.message || 'The text recognition worker stopped.')); waiting.clear(); worker = null; };
+    worker.onerror = e => {   // it couldn't start, or it broke: let it go (a fresh one starts with the next page)
+      for (const w of waiting.values()) w.no(new Error(e.message || 'The text recognition worker stopped.'));
+      waiting.clear();
+      worker?.terminate();
+      worker = null;
+    };
   }
   const id = ++nextJob;
   return new Promise((ok, no) => { waiting.set(id, { ok, no }); worker.postMessage({ type: 'ocr', id, image }); });

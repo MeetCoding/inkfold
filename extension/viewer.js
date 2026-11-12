@@ -68,7 +68,7 @@ const snapshot = () => JSON.stringify({ entries, shapes });
 // src: the PDF's bytes, or { url } for a PDF on the web. A web PDF is read in pieces as they're needed (where the
 // server allows it), so its first page shows long before a large file has finished downloading; the rest keeps
 // coming in the background, and doc.data gives the whole file once it's all there (for saving, for instance).
-async function loadDoc(key, src) {
+async function loadDoc(key, src, keep = true) {   // keep: register it under key straight away
   await workerReady;
   // The bytes are handed over to pdf.js rather than copied, so a big file isn't held twice; when the whole file is
   // needed again (saving, splitting, compressing), pdf.js hands back a copy.
@@ -76,15 +76,18 @@ async function loadDoc(key, src) {
   const pdf = await pdfjs.getDocument({ ...params, ...PDFJS_OPTS }).promise;
   const list = await Promise.all(Array.from({ length: pdf.numPages }, (_, n) => pdf.getPage(n + 1)));
   const doc = { pdf, bytes: null, pages: list };   // bytes: only once replaced by a compressed version
-  docs.set(key, doc);
+  if (keep) docs.set(key, doc);
   return doc;
 }
 // The whole file, as a promise of a fresh copy (for a web PDF, asking for it fetches whatever hasn't arrived yet).
 const bytesOf = async doc => doc.bytes ?? doc.pdf.getData();
 let painted = null;   // resolves once the first page of the newly opened PDF is on screen
 
-async function openPdf(buf, fileName) {
-  if (dirty && !confirm('Discard the unsaved changes to the current PDF?')) return;
+// from: where it came from ({ handle, picked } or { url }), which Save writes back to. It only takes effect once
+// the new PDF is open, so if opening is cancelled or fails, Save still means the PDF on screen.
+// -> true once it's open.
+async function openPdf(buf, fileName, from = {}) {
+  if (dirty && !(await ask({ title: 'Discard your changes?', body: [para(`The changes to “${name}” haven’t been saved. Open “${fileName}” anyway?`)], ok: 'Discard and open' }))) return false;
   const src = buf.url ? buf : new Uint8Array(buf);
   // What's on disk, so a later save over the file can tell whether another program changed it meanwhile. Taken
   // now, before pdf.js takes the bytes over.
@@ -93,19 +96,29 @@ async function openPdf(buf, fileName) {
   const old = [...docs.values()];
   let main, err;
   try {
-    main = await loadDoc('main', src);
+    main = await loadDoc('main', src, false);
   } catch (e) { err = e; }
-  if (!main && src.url && err?.name !== 'PasswordException') {   // the server wouldn't serve it in pieces: read it whole
-    try { main = await loadDoc('main', new Uint8Array(await fetchBytes(src.url))); } catch (e) { err = e; }
+  if (!main && src.url && err?.name !== 'PasswordException' && id === loadId) {   // the server wouldn't serve it in pieces: read it whole
+    try { main = await loadDoc('main', new Uint8Array(await fetchBytes(src.url)), false); } catch (e) { err = e; }
   }
-  if (!main) return fail(err?.name === 'PasswordException' ? 'Password-protected PDFs are not supported.' : 'That could not be read as a PDF.');
+  if (id !== loadId) { main?.pdf.loadingTask?.destroy().catch(() => {}); return false; }   // another file was opened meanwhile
+  if (!main) { fail(err?.name === 'PasswordException' ? 'Password-protected PDFs are not supported.' : 'That could not be read as a PDF.'); return false; }
+  endCrop();   // whatever was going on with the old PDF ends
+  if (moving) endMove(false);
+  finishEdit();
+  closeFind();
   let onPaint;
   painted = new Promise(r => (onPaint = r));
   painted.done = () => { painted.isDone = true; onPaint(); };
-  if (id !== loadId) return;
   // Free the documents being replaced. (pdf.js 6 documents have no destroy(); their loading task does.)
   for (const d of old) if (d.pdf !== main.pdf) d.pdf.loadingTask?.destroy().catch(() => {});
-  for (const [k] of docs) if (k !== 'main') docs.delete(k);
+  docs.clear();
+  docs.set('main', main);
+  srcHandle = from.handle ?? null;
+  srcPicked = !!from.handle && !!from.picked;
+  srcUrl = from.url ?? null;
+  srcStored = null;
+  if (srcUrl?.startsWith('file:')) { const u = srcUrl; recallHandle(u).then(h => { if (srcUrl === u) srcStored = h ?? null; }); }
   io.disconnect();
   views.clear();
   [name, entries, shapes, history, future, sel, dirty] = [fileName, [], [], [], [], null, false];
@@ -124,7 +137,7 @@ async function openPdf(buf, fileName) {
   document.title = title ? `${title} (${name})` : name;
   $('pages').setAttribute('aria-label', title || name);
 
-  const stamps = [];   // images Inkfold saved, read back below
+  const stamps = [], boxes = [];   // images and shapes Inkfold saved: details pdf.js doesn't give, read back below
   imgs.clear();
   const annots = await Promise.all(main.pages.map(page => page.getAnnotations().catch(() => [])));
   for (const [i] of main.pages.entries()) {
@@ -140,11 +153,12 @@ async function openPdf(buf, fileName) {
         shapes.push({ page: e.id, type: 'highlight', rects, color });
       } else if (a.subtype === 'Square' || a.subtype === 'Circle') {
         const w = a.borderStyle?.width || 1, [x1, y1, x2, y2] = a.rect;
-        shapes.push({
+        const s = {
           page: e.id, type: a.subtype === 'Square' ? 'rect' : 'ellipse',
           x1: x1 + w / 2, y1: y1 + w / 2, x2: x2 - w / 2, y2: y2 - w / 2, color, width: w,
-          ...(a.interiorColor?.length === 3 ? { fill: true } : {}),
-        });
+        };
+        shapes.push(s);
+        boxes.push({ s, id: a.id });   // filled or not: its /IC, which pdf.js doesn't pass on
       } else if (a.subtype === 'FreeText') {
         const [x1, , , y2] = a.rect, da = a.defaultAppearanceData ?? {};
         const fc = da.fontColor?.length === 3 ? '#' + [...da.fontColor].map(v => v.toString(16).padStart(2, '0')).join('') : colors.text;
@@ -157,8 +171,8 @@ async function openPdf(buf, fileName) {
       main.pdf.annotationStorage.setValue(a.id, { noView: true });
     }
   }
-  if (stamps.length) await readStamps(await bytesOf(main), stamps);
-  if (id !== loadId) return;
+  if (stamps.length || boxes.length) await readMarks(await bytesOf(main), stamps, boxes);
+  if (id !== loadId) return false;
   layoutPages();
   const back = restorePlace(main);
   if (back === false) {
@@ -171,16 +185,17 @@ async function openPdf(buf, fileName) {
   // In the background, once the first page is on screen (so none of this slows it down): offer to compress a PDF
   // that's much bigger than it needs to be (once per file), and recognise the text on pages that have none, such as scans.
   await Promise.race([painted, new Promise(r => setTimeout(r, 1500))]);
-  if (id !== loadId) return;
+  if (id !== loadId) return true;
   checkCompression(id, !!info.EncryptFilterName);
   autoOcr(id);
 
   // Build every page's text layer in the background, so the whole document is selectable,
   // searchable with Ctrl+F, and readable by assistants and screen readers, not just the pages in view.
   for (const p of [...pages]) {
-    if (id !== loadId) return;
+    if (id !== loadId) return true;
     await textLayer(p);
   }
+  return true;
 }
 
 function fail(text) {
@@ -204,15 +219,11 @@ function fetchBytes(src) {   // XHR rather than fetch, because fetch cannot read
 async function openUrl(src) {
   try {
     const file = decodeURIComponent(new URL(src).pathname.split('/').pop()) || 'document.pdf';
-    srcUrl = src;
-    srcHandle = null;
-    srcStored = null;
-    if (src.startsWith('file:')) recallHandle(src).then(h => { if (srcUrl === src) srcStored = h ?? null; });
     let source;
     if (!src.startsWith('file:')) source = { url: src };   // read in pieces, first page first
     else if (IN_PAGE) source = await (globalThis.inkfoldEarly?.bytes ?? Promise.reject());   // read by content.js, as the tab opened
     else source = await fetchBytes(src);
-    await openPdf(source, file);
+    await openPdf(source, file, { url: src });
   } catch {
     fail(src.startsWith('file:')
       ? 'To open PDFs from your computer, turn on “Allow access to file URLs” for Inkfold in chrome://extensions. Or just drop the file here.'
@@ -236,6 +247,7 @@ const io = new IntersectionObserver(list => {
 }, { rootMargin: '100% 0px' });
 
 const rotationOf = p => (p.page.rotate + p.e.rot) % 360;
+const shown = p => p.e.crop ?? p.page.view;   // the part of the page on screen, in PDF points
 
 // A page's viewport, showing only its crop box (e.crop: [x1, y1, x2, y2] in PDF points) when it has one.
 // While the page is being cropped, it shows whole.
@@ -323,9 +335,9 @@ async function render(p) {
     canvas, canvasContext: canvas.getContext('2d'), viewport,
     annotationMode: pdfjs.AnnotationMode.ENABLE_STORAGE,   // honours the noView flags set in openPdf
   });
-  try { await task.promise; } catch { return; }   // cancelled by a newer render
-  if (p.task !== task) return;
-  p.canvas?.remove();
+  try { await task.promise; } catch { canvas.width = canvas.height = 0; return; }   // cancelled by a newer render
+  if (p.task !== task) { canvas.width = canvas.height = 0; return; }
+  drop(p.canvas);
   p.div.prepend(canvas);
   painted?.done();
   Object.assign(p, { canvas, task: null, at: key });
@@ -333,8 +345,14 @@ async function render(p) {
 
 function unrender(p) {
   p.task?.cancel();
-  p.canvas?.remove();
+  drop(p.canvas);
   Object.assign(p, { canvas: null, task: null, at: '', want: '' });
+}
+
+function drop(canvas) {   // a canvas's pixels are freed at once, not whenever it's garbage-collected
+  if (!canvas) return;
+  canvas.remove();
+  canvas.width = canvas.height = 0;
 }
 
 function textLayer(p) {   // invisible, selectable text laid over the canvas
@@ -401,7 +419,7 @@ async function autoOcr(id) {
   if (!todo.length) return showOcr({ phase: 'none' });   // the PDF already has its text
   ocrStop = false;
   todo.forEach(i => ocrBusy.add(i));
-  let done = 0, found = 0;
+  let done = 0, found = 0, failed = 0;
   const total = todo.length;
   showOcr({ phase: 'running', done, total });
   const left = new Set(todo);
@@ -419,7 +437,9 @@ async function autoOcr(id) {
       result = await chrome.runtime.sendMessage({ type: 'ocr', image: shot.image });
     } catch (e) { result = { error: String(e) }; }
     if (id !== loadId) return;
-    if (!result || result.error) {
+    if (!result || result.error) {   // one page that can't be read is skipped; if they all fail, it's given up
+      ocrBusy.delete(i);
+      if (++failed < 3 || done > failed) { showOcr({ phase: 'running', done: ++done, total }); continue; }
       showOcr({ phase: 'failed' });
       ocrBusy.clear();
       return say('Inkfold couldn’t recognise the text on this PDF’s scanned pages.', { long: true });
@@ -680,7 +700,7 @@ async function addMergeFiles(files) {
   }
 }
 
-async function merge() {
+const merge = oneAtATime(async () => {
   const items = mergeItems.filter(it => !it.error);
   if (items.length < 2) return;
   finishEdit();
@@ -720,7 +740,7 @@ async function merge() {
   } catch (e) {
     say(e.message.startsWith('“') ? e.message : 'Could not merge: ' + e.message, true);
   }
-}
+});
 
 $('mergeAdd').onclick = () => { $('mergeFiles').value = ''; $('mergeFiles').click(); };
 $('mergeFiles').onchange = () => addMergeFiles($('mergeFiles').files);
@@ -1072,9 +1092,10 @@ function markPage(p) {
 function paintMarks() {
   if (!CSS.highlights || typeof Highlight === 'undefined') return;
   const on = findHits[findOn]?.p, all = [], cur = [];
-  for (const [p, rs] of findMarks) (p === on ? cur : all).push(...rs);
-  CSS.highlights.set('find', new Highlight(...all));
-  CSS.highlights.set('find-on', new Highlight(...cur));
+  for (const [p, rs] of findMarks) for (const r of rs) (p === on ? cur : all).push(r);
+  const hl = rs => { const h = new Highlight(); for (const r of rs) h.add(r); return h; };   // (any number of matches)
+  CSS.highlights.set('find', hl(all));
+  CSS.highlights.set('find-on', hl(cur));
 }
 
 $('findBtn').onclick = () => ($('find').matches(':popover-open') ? closeFind() : openFind());
@@ -1089,17 +1110,23 @@ $('find').addEventListener('keydown', e => {
   if (mod) return;   // Ctrl+Z, Ctrl+S… still work
   e.stopPropagation();   // letters typed here aren't tool shortcuts
   if (e.key === 'Escape') { e.preventDefault(); return closeFind(); }
-  if (!rows.length) return;
-  if (e.target === $('findQ')) {
-    if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'ArrowDown') return go(0);
-    if (e.key === 'Enter') { e.preventDefault(); rows[0].click(); }
-    return;
+  if (e.target === $('findQ') && rows.length) {
+    if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'ArrowDown') return go(0);   // straight to the first page found
+    if (e.key === 'Enter') { e.preventDefault(); return rows[0].click(); }
   }
-  if (i < 0) return;
-  if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) return go(i + 1);
-  if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) return i === 0 ? (e.preventDefault(), $('findQ').focus()) : go(i - 1);
-  if (e.key === 'Home') return go(0);
-  if (e.key === 'End') return go(rows.length - 1);
+  if (i >= 0) {
+    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) return i === rows.length - 1 && e.key === 'Tab' ? (e.preventDefault(), $('findQ').focus()) : go(i + 1);
+    if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) return i === 0 ? (e.preventDefault(), $('findQ').focus()) : go(i - 1);
+    if (e.key === 'Home') return go(0);
+    if (e.key === 'End') return go(rows.length - 1);
+  }
+  // Anywhere else, Tab and Shift+Tab go round the find box's own controls; focus never leaves it while it's open.
+  if (e.key === 'Tab') {
+    const ring = [$('findQ'), $('findClose'), $('findCase'), $('findWord'), ...rows];
+    const k = ring.indexOf(document.activeElement);
+    e.preventDefault();
+    ring[((k < 0 ? 0 : k + (e.shiftKey ? -1 : 1)) + ring.length) % ring.length].focus();
+  }
 });
 
 /* ---------- zoom and layout ---------- */
@@ -1317,8 +1344,11 @@ async function addNote(after = currentIndex(), given = null) {
   say('Adding note…', true);
   // As wide as the page it follows; as tall as the note needs.
   const ref = pages[after], { width, height } = viewportOf(ref, 1);
-  const key = 'note' + nextId++;
-  const doc = await loadDoc(key, await notePdf(md, Math.round(width), Math.round(height), { fit: true }));
+  const key = 'note' + nextId++, id = loadId;
+  let doc;
+  try { doc = await loadDoc(key, await notePdf(md, Math.round(width), Math.round(height), { fit: true })); }
+  catch (e) { return say('Couldn’t make that note: ' + (e?.message || 'something in it couldn’t be laid out') + '.', true); }
+  if (id !== loadId) return;   // another PDF was opened meanwhile
   const added = doc.pages.map((_, i) => ({ id: nextId++, doc: key, i, rot: 0 }));
   changePages(() => { entries.splice(after + 1, 0, ...added); });
   doc.pages.forEach((_, i) => textLayer(views.get(added[i].id)));
@@ -1377,7 +1407,7 @@ function rangeIds() {
 }
 
 // Split: each range as a file of its own (mode 'separate'), or all of them, in the order typed, as one PDF ('one').
-async function split(mode = 'separate') {
+const split = oneAtATime(async (mode = 'separate') => {
   let groups;
   try { groups = parseRanges($('splitRanges').value, entries.length); $('panelMsg').textContent = ''; }
   catch (e) { $('panelMsg').textContent = e.message; return; }
@@ -1421,7 +1451,7 @@ async function split(mode = 'separate') {
   } catch (e) {
     say(/encrypt/i.test(e.message) ? 'This PDF is encrypted, so it cannot be split.' : 'Could not split: ' + e.message, true);
   }
-}
+});
 
 // The save dialog for one part. Chrome only opens one shortly after a click, so when the moment has passed, a button
 // asks for the click that opens the next one. -> a file handle, or 'stop' if the dialog was cancelled.
@@ -1513,6 +1543,7 @@ async function prepImage(src) {
   img.src = src;
   await img.decode();
   let { naturalWidth: w, naturalHeight: h } = img;
+  if (!w || !h) [w, h] = [800, 600];   // an SVG without a size of its own
   const mime = src.slice(5, src.indexOf(';'));
   const k = Math.min(1, 4000 / Math.max(w, h));
   if ((mime === 'image/png' || mime === 'image/jpeg') && k === 1) return { src, w, h, mime };
@@ -1581,12 +1612,15 @@ async function imagePage(after, src) {
   const MAXH = 14400;   // the tallest page PDF allows; a very long picture is narrowed to fit, in the middle
   const w = H > MAXH ? W * MAXH / H : W;
   H = Math.min(H, MAXH);
-  const { PDFDocument } = await lib();
-  const d = await PDFDocument.create();
-  const pic = im.mime === 'image/jpeg' ? await d.embedJpg(dataBytes(im.src)) : await d.embedPng(dataBytes(im.src));
-  d.addPage([W, H]).drawImage(pic, { x: (W - w) / 2, y: 0, width: w, height: H });
-  const key = 'pic' + nextId++;
-  await loadDoc(key, await d.save());
+  const key = 'pic' + nextId++, id = loadId;
+  try {
+    const { PDFDocument } = await lib();
+    const d = await PDFDocument.create();
+    const pic = im.mime === 'image/jpeg' ? await d.embedJpg(dataBytes(im.src)) : await d.embedPng(dataBytes(im.src));
+    d.addPage([W, H]).drawImage(pic, { x: (W - w) / 2, y: 0, width: w, height: H });
+    await loadDoc(key, await d.save());
+  } catch { return say('That picture couldn’t be made into a page.'); }
+  if (id !== loadId) return;
   const added = { id: nextId++, doc: key, i: 0, rot: 0 };
   changePages(() => { entries.splice(after + 1, 0, added); });
   views.get(added.id)?.div.scrollIntoView({ block: 'start' });
@@ -1600,7 +1634,7 @@ async function placeImage(p, src) {
   try { im = await prepImage(src); } catch { return say('That file couldn’t be read as a picture.'); }
   const key = 'img' + nextImg++;
   imgs.set(key, im);
-  const [x0, y0, x1, y1] = p.page.view, PW = x1 - x0, PH = y1 - y0;
+  const [x0, y0, x1, y1] = shown(p), PW = x1 - x0, PH = y1 - y0;
   const k = Math.min(1, (PW * 0.8) / (im.w * 0.75), (PH * 0.8) / (im.h * 0.75));   // 1 px = 0.75 pt at 96 dpi
   const W = im.w * 0.75 * k, H = im.h * 0.75 * k;
   const r = p.div.getBoundingClientRect();
@@ -1617,16 +1651,20 @@ async function placeImage(p, src) {
   say('Image added. Drag it to move it, drag a corner to resize it, or press Del to remove it.');
 }
 
-// The pictures inside Inkfold's saved image stamps, so they can be moved and resized again.
-async function readStamps(bytes, stamps) {
-  const { PDFDocument, PDFRef, PDFName, PDFDict, decodePDFRawStream } = await lib();
+// What pdf.js doesn't report about annotations Inkfold saved, read from the file itself: each image's pixels, and
+// whether each rectangle or ellipse is filled (its interior colour, /IC).
+async function readMarks(bytes, stamps, boxes) {
+  const { PDFDocument, PDFRef, PDFName, PDFDict, PDFArray, decodePDFRawStream } = await lib();
   const N = PDFName.of;
   let ctx;
   try { ctx = (await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })).context; } catch { ctx = null; }
+  const annot = id => { const m = /^(\d+)R(\d*)$/.exec(id); return ctx.lookup(PDFRef.of(+m[1], +(m[2] || 0)), PDFDict); };
+  for (const { s, id } of boxes) {
+    try { if (annot(id).lookup(N('IC'), PDFArray)?.size() >= 1) s.fill = true; } catch {}
+  }
   for (const { s, id } of stamps) {
     try {
-      const m = /^(\d+)R(\d*)$/.exec(id);
-      const look = ctx.lookup(PDFRef.of(+m[1], +(m[2] || 0)), PDFDict).lookup(N('AP'), PDFDict).lookup(N('N'));
+      const look = annot(id).lookup(N('AP'), PDFDict).lookup(N('N'));
       const xo = look.dict.lookup(N('Resources'), PDFDict).lookup(N('XObject'), PDFDict);
       const pic = xo.lookup(xo.keys()[0]), d = pic.dict;
       const w = d.lookup(N('Width')).asNumber(), h = d.lookup(N('Height')).asNumber(), filter = String(d.lookup(N('Filter')));
@@ -1728,7 +1766,7 @@ async function magicPaste() {
 
 // Plain text as a text box, wrapped to about 60% of the page's width, in the middle of what's in view.
 async function pasteTextBox(p, t) {
-  const [x0, y0, x1, y1] = p.page.view;
+  const [x0, y0, x1, y1] = shown(p);
   const text = await wrapText(t, textSize, (x1 - x0) * 0.6);
   const L = await layout(text, textSize);
   const r = p.div.getBoundingClientRect();
@@ -1830,19 +1868,12 @@ function editText(p, s, fresh = false) {
   ta.addEventListener('paste', e => {   // put copied text in as lines, whatever the source used to break them
     const d = e.clipboardData;
     let t = d?.getData('text/plain');
-    if (!t && d?.getData('text/html')) {
-      const div = document.createElement('div');
-      div.innerHTML = d.getData('text/html');
-      div.style.cssText = 'position:fixed;left:-9999px;white-space:normal';
-      document.body.append(div);
-      t = div.innerText;
-      div.remove();
-    }
+    if (!t && d?.getData('text/html')) t = htmlText(d.getData('text/html'));
     if (!t) return;
     e.preventDefault();
     // Long lines are wrapped to fit the page from where the box starts (as Magic paste does), keeping the
     // lines it already had and never breaking a formula.
-    const [, , x1] = p.page.view, room = Math.max((x1 - p.page.view[0]) * 0.4, x1 - s.x1 - 18);
+    const [x0, , x1] = shown(p), room = Math.max((x1 - x0) * 0.4, x1 - s.x1 - 18);
     const at = [ta.selectionStart, ta.selectionEnd];
     wrapText(lines(t), s.size, room).catch(() => lines(t)).then(w => {
       if (editing?.ta !== ta) return;
@@ -1865,6 +1896,30 @@ function placeEditor() {
     left: ax + 'px', top: ay + 'px', fontSize: s.size * k + 'px', padding: PAD * k + 'px', color: s.color,
     transform: `rotate(${rotationOf(p)}deg)`,
   });
+}
+
+// Copied HTML -> its text, one line per paragraph, list item or <br>. It's parsed as an inert document (never put
+// into the page), so nothing in it can run or load.
+function htmlText(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, template, noscript').forEach(n => n.remove());
+  const BLOCK = /^(P|DIV|LI|H[1-6]|TR|PRE|BLOCKQUOTE|SECTION|ARTICLE|HEADER|FOOTER|UL|OL|TABLE|DT|DD)$/;
+  let out = '';
+  const walk = n => {
+    for (const c of n.childNodes) {
+      if (c.nodeType === 3) out += c.data.replace(/\s+/g, ' ');
+      else if (c.nodeType === 1) {
+        if (c.tagName === 'BR') { out += '\n'; continue; }
+        const block = BLOCK.test(c.tagName);
+        if (block && out && !out.endsWith('\n')) out += '\n';
+        if (c.tagName === 'TD' || c.tagName === 'TH') out += out.endsWith('\n') || !out ? '' : '\t';
+        walk(c);
+        if (block && !out.endsWith('\n')) out += '\n';
+      }
+    }
+  };
+  walk(doc.body);
+  return out.split('\n').map(l => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // \r\n, \r, vertical tabs (Word's line breaks), form feeds and Unicode line/paragraph separators all become \n.
@@ -2078,8 +2133,10 @@ function mergeLines(boxes) {   // join word boxes that sit on the same line into
 
 /* ---------- edits ---------- */
 
+const HISTORY = 300;   // undo steps kept
 function commit(before) {
   history.push(before);
+  if (history.length > HISTORY) history.splice(0, history.length - HISTORY);
   future = [];
   dirty = true;
   syncUndo();
@@ -2413,8 +2470,18 @@ function handles(mode, f) {
     };
   });
 }
-const recallHandle = url => handles('readonly', s => s.get(url)).catch(() => null);
-const rememberHandle = (url, h) => handles('readwrite', s => s.put(h, url)).catch(() => {});
+const HANDLES = 300;   // files remembered, the most recently saved
+const recallHandle = url => handles('readonly', s => s.get(url)).then(v => v?.h ?? (v?.kind === 'file' ? v : null)).catch(() => null);
+const rememberHandle = async (url, h) => {
+  try {
+    await handles('readwrite', s => s.put({ h, t: Date.now() }, url));
+    const all = await handles('readonly', s => s.getAll());
+    if (all.length <= HANDLES) return;
+    const keys = await handles('readonly', s => s.getAllKeys());
+    const old = keys.map((k, i) => [k, all[i]?.t ?? 0]).sort((a, b) => a[1] - b[1]).slice(0, all.length - HANDLES);
+    await handles('readwrite', s => { for (const [k] of old) s.delete(k); return s.count(); });
+  } catch {}
+};
 const forgetHandle = url => handles('readwrite', s => s.delete(url)).catch(() => {});
 
 // Chrome's own "Save changes to …?" question, asked only when this tab doesn't already have permission.
@@ -2442,10 +2509,21 @@ async function unchanged(h) {
 
 const PDF_TYPES = [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }];
 
+// Saving, splitting and merging each take a moment (and may wait on a dialog); one runs at a time, so a second
+// press doesn't write the same file twice at once.
+let working = false;
+function oneAtATime(fn) {
+  return async (...args) => {
+    if (working) return say('Still working on the last save. One moment…');
+    working = true;
+    try { return await fn(...args); } finally { working = false; }
+  };
+}
+
 // Save writes over the original: with only Chrome's permission when Inkfold has the file's handle (opened with
 // Open, dropped here, or saved once before from its file:// address), or else through the save dialog, which
 // suggests the original's name and folder. Ctrl+Shift+S (copy) always asks where, for a new file.
-async function save(copy = false) {
+const save = oneAtATime(async (copy = false) => {
   finishEdit();
   if (!docs.has('main')) return;
   let handle = null, over = false;
@@ -2507,7 +2585,7 @@ async function save(copy = false) {
   } catch (e) {
     say(/encrypt/i.test(e.message) ? 'This PDF is encrypted, so it cannot be saved.' : 'Could not save: ' + e.message, true);
   }
-}
+});
 
 // For a PDF opened from its file:// address there's no file handle to compare with, and the same name could be in
 // another folder: so read the original again and see whether it's now exactly what was just saved.
@@ -2523,7 +2601,7 @@ async function originalIs(data) {
 function download(data, file) {
   const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
   Object.assign(document.createElement('a'), { href: url, download: file }).click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 // Writes a PDF holding `list` (some or all entries, in order) with their rotations and annotations.
@@ -2714,6 +2792,7 @@ function el2(tag, attrs, ...kids) {
 // A small modal: resolves true for the main button, false for Cancel / Escape.
 function ask({ title, body, ok = 'OK', cancel = 'Cancel', wide = false }) {
   const d = $('dlg');
+  if (d.open) d.close('');   // one at a time: an earlier question counts as cancelled
   d.classList.toggle('wide', wide);
   $('dlgTitle').textContent = title;
   $('dlgBody').replaceChildren(...body);
@@ -2740,10 +2819,9 @@ const ICONS = {
 
 async function openFile(f, handle = null, picked = false) {
   if (!f) return;
-  srcHandle = handle;
-  srcPicked = !!handle && !!picked;
-  srcUrl = srcStored = null;
-  await openPdf(await f.arrayBuffer(), f.name);
+  let bytes;
+  try { bytes = await f.arrayBuffer(); } catch { return say('That file couldn’t be read.'); }
+  if (!(await openPdf(bytes, f.name, { handle, picked }))) return;
   // Files dropped or picked here live on the extension's page, which Gemini in Chrome can't read.
   if (!IN_PAGE && docs.has('main') && firstTime('tip-gemini')) {
     say('Tip: Gemini in Chrome can’t read files opened here. To use it, open the PDF straight in Chrome instead (drag it onto the tab bar).', { long: true });
@@ -2987,7 +3065,10 @@ $('pages').addEventListener('mousedown', e => { if (e.target === e.currentTarget
 addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', async e => {
   e.preventDefault();
-  if (docs.has('main')) return;
+  if (docs.has('main')) {
+    if (e.dataTransfer.types.includes('Files')) say('To combine PDFs, drop them on Merge PDFs in the Pages and file panel (P).');
+    return;
+  }
   const item = [...e.dataTransfer.items].find(i => i.kind === 'file');
   const f = e.dataTransfer.files[0], h = item?.getAsFileSystemHandle?.();   // must be asked for during the event
   openFile(f, await h?.catch(() => null) ?? null);
@@ -3099,7 +3180,7 @@ async function welcome() {
   const list = el2('ul', {},
     el2('li', {}, el2('strong', {}, 'PDFs now open here. '), 'Any PDF you open in Chrome opens in Inkfold. To use Chrome’s own viewer again, right-click the Inkfold toolbar icon and untick “Open every PDF with Inkfold”.'),
     el2('li', {}, el2('strong', {}, 'Scanned PDFs become searchable. '), 'Inkfold reads the text of pages that have none, in the background, right on your computer.'),
-    el2('li', {}, el2('strong', {}, 'Your files stay on your computer. '), 'Nothing is uploaded. Save writes over your original after you confirm, or makes a new copy if you pick another name.'),
+    el2('li', {}, el2('strong', {}, 'Your files stay on your computer. '), 'Nothing is uploaded. Save writes over your original (Chrome asks your permission first); Ctrl+Shift+S saves a copy.'),
     el2('li', {}, el2('strong', {}, 'Keyboard first. '), 'Hover over a button to see its shortcut. Press ? for the full list, and Ctrl+F to find text.'),
   );
   if (!fileAccess) {
