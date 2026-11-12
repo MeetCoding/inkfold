@@ -36,7 +36,7 @@ const store = {
 // the file you opened ('main') or a note made from Markdown ('note…').
 //   entries: [{ id, doc, i, rot }]        rot = extra rotation added on top of the page's own
 // Annotations are kept in PDF points and tied to an entry id, so they follow their page around:
-//   { page, type: 'rect'|'ellipse', x1, y1, x2, y2, color, width }   (box = centre line of the stroke)
+//   { page, type: 'rect'|'ellipse', x1, y1, x2, y2, color, width, fill }   (box = centre line of the stroke; fill: solid inside)
 //   { page, type: 'highlight', rects: [[x1, y1, x2, y2], …], color }   (one box per line of text)
 //   { page, type: 'text', x1, y2, text, size, color }   (x1, y2 = top-left corner; the size comes from textbox.js)
 //   { page, type: 'image', x1, y1, x2, y2, img }        (img: key into imgs, which holds the picture itself)
@@ -46,6 +46,7 @@ let entries = [], pages = [], shapes = [], history = [], future = [], hovered = 
 let tool = 'select', sel = null, drag = null, pick = null, dirty = false, msgTimer;
 let zoom = 1, fit = store.get('fit', 'auto'), spread = store.get('spread', false);
 let lineWidth = store.get('width', 2);
+let fillShapes = store.get('fill', false);   // new rectangles and ellipses: filled or just outlined
 // A few standard colours: light ones for the highlighter (ink shows through), strong ones for shapes and text.
 const PALETTES = {
   highlight: [['Yellow', '#ffd400'], ['Green', '#9be28f'], ['Blue', '#8fc7ff'], ['Pink', '#ff9ccb'], ['Orange', '#ffb561']],
@@ -139,6 +140,7 @@ async function openPdf(buf, fileName) {
         shapes.push({
           page: e.id, type: a.subtype === 'Square' ? 'rect' : 'ellipse',
           x1: x1 + w / 2, y1: y1 + w / 2, x2: x2 - w / 2, y2: y2 - w / 2, color, width: w,
+          ...(a.interiorColor?.length === 3 ? { fill: true } : {}),
         });
       } else if (a.subtype === 'FreeText') {
         const [x1, , , y2] = a.rect, da = a.defaultAppearanceData ?? {};
@@ -232,6 +234,14 @@ const io = new IntersectionObserver(list => {
 
 const rotationOf = p => (p.page.rotate + p.e.rot) % 360;
 
+// A page's viewport, showing only its crop box (e.crop: [x1, y1, x2, y2] in PDF points) when it has one.
+// While the page is being cropped, it shows whole.
+function viewportOf(p, scale, rotation = rotationOf(p)) {
+  const vp = p.page.getViewport({ scale, rotation }), c = p.cropping ? null : p.e.crop;
+  return c ? new vp.constructor({ viewBox: c, userUnit: p.page.userUnit ?? 1, scale, rotation }) : vp;
+}
+const cropKey = p => (p.cropping ? '' : p.e.crop?.join(',') ?? '');
+
 function makeView(e) {
   const div = document.createElement('div');
   const hl = el('svg', { class: 'hl', 'aria-hidden': 'true' });
@@ -279,7 +289,10 @@ function layoutPages() {   // match the DOM to `entries`
 }
 
 function size(p) {
-  p.vp = p.page.getViewport({ scale: zoom * CSS_PER_PT, rotation: rotationOf(p) });
+  p.vp = viewportOf(p, zoom * CSS_PER_PT);
+  const ck = cropKey(p);
+  if (p.textReady && p.textKey !== ck) rebuildText(p);   // the text sits relative to the page's box
+  p.textKey = ck;
   p.div.style.width = p.vp.width + 'px';
   p.div.style.height = p.vp.height + 'px';
   p.div.style.setProperty('--scale-factor', p.vp.scale);
@@ -293,13 +306,13 @@ function settle(delay = 0) {   // re-render visible pages once sizes stop changi
 }
 
 async function render(p) {
-  const key = zoom + '|' + rotationOf(p);
+  const key = zoom + '|' + rotationOf(p) + '|' + cropKey(p);
   if (p.at === key || p.want === key) return;
   p.task?.cancel();
   p.want = key;
   // Render at device resolution, but keep any one canvas under ~16 megapixels.
   const k = Math.min(devicePixelRatio || 1, Math.sqrt(16e6 / (p.vp.width * p.vp.height)));
-  const viewport = p.page.getViewport({ scale: zoom * CSS_PER_PT * k, rotation: rotationOf(p) });
+  const viewport = viewportOf(p, zoom * CSS_PER_PT * k);
   const canvas = document.createElement('canvas');
   canvas.width = viewport.width;
   canvas.height = viewport.height;
@@ -469,7 +482,7 @@ function rebuildText(p) {   // swap a page's text layer for a fresh one (after i
   p.text = null;
   p.textReady = null;
   textLayer(p);
-  findStale();   // its words can now be found
+  findStale();   // its words can now be found (or found again, after a crop)
 }
 
 /* ---------- offering to compress ---------- */
@@ -1089,7 +1102,7 @@ $('find').addEventListener('keydown', e => {
 /* ---------- zoom and layout ---------- */
 
 function fitZoom(mode) {   // sized so that the widest / tallest page fits, so mixed page sizes never scroll sideways
-  const dims = pages.map(p => p.page.getViewport({ scale: CSS_PER_PT, rotation: rotationOf(p) }));
+  const dims = pages.map(p => viewportOf(p, CSS_PER_PT));
   const widest = list => Math.max(0, ...list.map(v => v.width));
   const w = spread
     ? widest(dims.filter((_, i) => i % 2 === 0)) + (dims.length > 1 ? GAP + widest(dims.filter((_, i) => i % 2)) : 0)
@@ -1228,8 +1241,9 @@ function buildZoomPop() {
   });
 }
 
-function relayout() {   // after pages were added, removed or rotated
+function relayout() {   // after pages were added, removed, rotated or cropped
   const live = new Set(entries.map(e => e.id));
+  if (cropping && !live.has(cropping.p.id)) endCrop();
   if (sel && !live.has(sel.page)) sel = null;
   keepPlace(() => {
     layoutPages();
@@ -1299,7 +1313,7 @@ async function addNote(after = currentIndex(), given = null) {
   if (!md?.trim()) return;
   say('Adding note…', true);
   // As wide as the page it follows; as tall as the note needs.
-  const ref = pages[after], { width, height } = ref.page.getViewport({ scale: 1, rotation: rotationOf(ref) });
+  const ref = pages[after], { width, height } = viewportOf(ref, 1);
   const key = 'note' + nextId++;
   const doc = await loadDoc(key, await notePdf(md, Math.round(width), Math.round(height), { fit: true }));
   const added = doc.pages.map((_, i) => ({ id: nextId++, doc: key, i, rot: 0 }));
@@ -1453,8 +1467,8 @@ function paint(p) {
     const [tag, geo] = s.type === 'rect'
       ? ['rect', { x: v.x, y: v.y, width: v.w, height: v.h }]
       : ['ellipse', { cx: v.x + v.w / 2, cy: v.y + v.h / 2, rx: v.w / 2, ry: v.h / 2 }];
-    over.push(el(tag, { ...geo, class: s === eraseHover ? 'shape erasing' : 'shape', fill: 'none', stroke: s.color, 'stroke-width': w }));
-    over.push(el(tag, { ...geo, class: 'hit', 'data-i': i, 'stroke-width': Math.max(w, 10) }));   // easier to grab
+    over.push(el(tag, { ...geo, class: s === eraseHover ? 'shape erasing' : 'shape', fill: s.fill ? s.color : 'none', stroke: s.color, 'stroke-width': w }));
+    over.push(el(tag, { ...geo, class: s.fill ? 'hit filled' : 'hit', 'data-i': i, 'stroke-width': Math.max(w, 10) }));   // easier to grab
     if (s === sel) grips(v, over);
   });
   p.hl.replaceChildren(...under);
@@ -1559,7 +1573,7 @@ function showCard(box, anchor, title, kind, preview, acts) {
 async function imagePage(after, src) {
   let im;
   try { im = await prepImage(src); } catch { return say('That file couldn’t be read as a picture.'); }
-  const ref = pages[after], { width } = ref.page.getViewport({ scale: 1, rotation: rotationOf(ref) });
+  const ref = pages[after], { width } = viewportOf(ref, 1);
   let W = Math.round(width), H = Math.max(1, Math.round(W * im.h / im.w));
   const MAXH = 14400;   // the tallest page PDF allows; a very long picture is narrowed to fit, in the middle
   const w = H > MAXH ? W * MAXH / H : W;
@@ -1729,14 +1743,16 @@ async function pasteTextBox(p, t) {
 
 /* ---------- eraser ---------- */
 
-// Does the eraser at (x, y), PDF points, touch this annotation? Shapes are caught by their outline,
-// highlights and text boxes anywhere inside.
+// Does the eraser at (x, y), PDF points, touch this annotation? Outlined shapes are caught by their outline,
+// filled shapes, highlights and text boxes anywhere inside.
 function touches(s, x, y, tol) {
   const inBox = ([a, b, c, d], m) => x >= a - m && x <= c + m && y >= b - m && y <= d + m;
   if (s.type === 'highlight') return s.rects.some(r => inBox(r, tol));
   const box = boxOf(s);
   if (s.type === 'text' || s.type === 'image') return inBox(box, tol);
   const m = (s.width || 1) / 2 + tol, [a, b, c, d] = box;
+  if (s.fill && s.type === 'rect') return inBox(box, m);
+  if (s.fill) { const cx = (a + c) / 2, cy = (b + d) / 2; return Math.hypot((x - cx) / Math.max((c - a) / 2 + m, 1e-3), (y - cy) / Math.max((d - b) / 2 + m, 1e-3)) <= 1; }
   if (s.type === 'rect') return inBox(box, m) && !(x > a + m && x < c - m && y > b + m && y < d - m);
   const cx = (a + c) / 2, cy = (b + d) / 2, rx = Math.max((c - a) / 2, 1e-3), ry = Math.max((d - b) / 2, 1e-3);
   return Math.abs(Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * Math.min(rx, ry) <= m;
@@ -1929,7 +1945,7 @@ function down(e, p) {
     pendingText = { p, s, fresh: s !== old };   // opened on release: the press itself still moves the focus
     return;
   } else if (tool === 'rect' || tool === 'ellipse') {  // draw a new one
-    sel = { page: p.id, type: tool, x1: at[0], y1: at[1], x2: at[0], y2: at[1], color: colors.shape, width: lineWidth };
+    sel = { page: p.id, type: tool, x1: at[0], y1: at[1], x2: at[0], y2: at[1], color: colors.shape, width: lineWidth, ...(fillShapes ? { fill: true } : {}) };
     shapes.push(sel);
     drag = { anchor: at, fresh: true };
   } else return;
@@ -2098,6 +2114,11 @@ function syncControls() {   // the colour and thickness boxes show the selection
     b.disabled = k === 'highlight';
   }
   $('widths').hidden = k === 'text';
+  const shapeType = sel ? sel.type : tool, filled = sel ? !!sel.fill : fillShapes;
+  $('fills').hidden = shapeType !== 'rect' && shapeType !== 'ellipse';
+  $('fills').dataset.shape = shapeType;
+  for (const b of $('fills').children) b.setAttribute('aria-checked', (b.dataset.fill === '1') === filled);
+  document.body.dataset.fill = fillShapes;
   $('tsize').hidden = k !== 'text';
   $('tsizeVal').textContent = (sel?.type === 'text' ? sel.size : textSize) + ' pt';
 }
@@ -2148,14 +2169,181 @@ function redo() {
   syncUndo();
 }
 
+// Outline or filled: for the selected shape, and for new rectangles and ellipses.
+function setFill(f) {
+  fillShapes = f;
+  store.set('fill', f);
+  if (sel && (sel.type === 'rect' || sel.type === 'ellipse') && !!sel.fill !== f) {
+    commit(snapshot());
+    if (f) sel.fill = true; else delete sel.fill;
+    repaint();
+  }
+  syncControls();
+}
+
+// Choosing the rectangle or ellipse tool again (its button, R or O) switches between outline and filled.
+function pickTool(t) {
+  if (t === tool && (t === 'rect' || t === 'ellipse')) return setFill(!(sel && sel.type === t ? !!sel.fill : fillShapes));
+  setTool(t);
+}
+
 function setTool(t) {
   finishEdit();
   if (eraseHover) { eraseHover = null; repaint(); }
-  if (t === 'eraser') select(null);
+  if (t === 'eraser' || (sel && t !== 'select' && t !== sel.type)) select(null);   // a new tool starts fresh
   tool = document.body.dataset.tool = t;
   for (const b of document.querySelectorAll('button[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === t);
   if (t === 'highlight') highlightSelection();   // text already selected? highlight it straight away
   syncControls();
+}
+
+/* ---------- cropping pages ---------- */
+
+// Right-click a page → Crop page: the whole page shows, with a box to drag (its corners and edges resize it,
+// inside moves it, dragging outside draws a new one). Enter (or Crop) keeps what's inside; Esc cancels. The box
+// is kept as fractions of the page as shown, so zooming meanwhile is fine; on Crop it becomes a box in PDF points
+// (the page's CropBox when saved). Undo brings the page back.
+let cropping = null;   // { p, box: [left, top, right, bottom] as fractions of the whole page on screen }
+
+function startCrop(p) {
+  if (cropping) endCrop();
+  finishEdit();
+  select(null);
+  const had = p.e.crop;
+  p.cropping = true;
+  size(p);
+  render(p);
+  const v = p.vp, box = had ? fractionsOf(p, had) : [0, 0, 1, 1];
+  const ui = el2('div', { class: 'cropper' }, el2('div', { class: 'crop-box' },
+    ...['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(h => el2('i', { 'data-h': h })), el2('b', { class: 'thirds' })));
+  p.div.append(ui);
+  cropping = { p, box, ui };
+  ui.addEventListener('pointerdown', cropDrag);
+  drawCrop();
+  $('cropTitle').textContent = `Crop page ${pages.indexOf(p) + 1}`;
+  $('cropAll').hidden = pages.filter(q => sameSize(q, p)).length < 2;
+  $('cropbar').hidden = false;
+  document.body.classList.add('cropping');
+  const r = p.div.getBoundingClientRect();
+  if (r.top < header.offsetHeight || r.bottom > innerHeight - 70) p.div.scrollIntoView({ block: r.height > innerHeight - 140 ? 'start' : 'center', behavior: 'smooth' });
+  $('cropOk').focus();
+}
+
+function endCrop() {
+  if (!cropping) return;
+  const { p, ui } = cropping;
+  cropping = null;
+  ui.remove();
+  $('cropbar').hidden = true;
+  document.body.classList.remove('cropping');
+  p.cropping = false;
+  size(p);
+  render(p);
+}
+
+const sameSize = (q, p) => q.page.view.every((v, i) => Math.abs(v - p.page.view[i]) < 1) && rotationOf(q) === rotationOf(p);
+
+// A box in PDF points <-> fractions of the whole page as shown (rotation included).
+function fractionsOf(p, [x1, y1, x2, y2]) {
+  const vp = p.page.getViewport({ scale: 1, rotation: rotationOf(p) });
+  const a = vp.convertToViewportPoint(x1, y1), b = vp.convertToViewportPoint(x2, y2);
+  return [Math.min(a[0], b[0]) / vp.width, Math.min(a[1], b[1]) / vp.height, Math.max(a[0], b[0]) / vp.width, Math.max(a[1], b[1]) / vp.height];
+}
+function pointsOf(p, [l, t, r, b]) {
+  const vp = p.page.getViewport({ scale: 1, rotation: rotationOf(p) });
+  const a = vp.convertToPdfPoint(l * vp.width, t * vp.height), c = vp.convertToPdfPoint(r * vp.width, b * vp.height);
+  const [X1, Y1, X2, Y2] = p.page.view, round = v => Math.round(v * 100) / 100;
+  return [Math.max(X1, Math.min(a[0], c[0])), Math.max(Y1, Math.min(a[1], c[1])), Math.min(X2, Math.max(a[0], c[0])), Math.min(Y2, Math.max(a[1], c[1]))].map(round);
+}
+
+function drawCrop() {
+  const { p, box: [l, t, r, b], ui } = cropping, W = p.div.clientWidth, H = p.div.clientHeight;
+  Object.assign(ui.firstChild.style, { left: l * W + 'px', top: t * H + 'px', width: (r - l) * W + 'px', height: (b - t) * H + 'px' });
+  $('cropOk').disabled = false;
+}
+
+function cropDrag(ev) {
+  if (ev.button !== 0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const { p, ui } = cropping, rect = p.div.getBoundingClientRect();
+  const at = e => [Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)), Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))];
+  const start = at(ev), from = [...cropping.box];
+  const minW = 24 / rect.width, minH = 24 / rect.height;
+  let h = ev.target.dataset.h ?? (ev.target.closest('.crop-box') ? 'move' : 'new');
+  if (h === 'new') { cropping.box = [start[0], start[1], start[0], start[1]]; h = 'se'; from.splice(0, 4, ...cropping.box); }
+  ui.classList.add('dragging');
+  ui.setPointerCapture(ev.pointerId);
+  const move = e => {
+    const [x, y] = at(e), dx = x - start[0], dy = y - start[1];
+    let [l, t, r, b] = from;
+    if (h === 'move') {
+      const w = r - l, hh = b - t;
+      l = Math.min(1 - w, Math.max(0, l + dx)); t = Math.min(1 - hh, Math.max(0, t + dy));
+      cropping.box = [l, t, l + w, t + hh];
+    } else {
+      if (h.includes('w')) l = Math.min(x, r - minW);
+      if (h.includes('e')) r = Math.max(x, l + minW);
+      if (h.includes('n')) t = Math.min(y, b - minH);
+      if (h.includes('s')) b = Math.max(y, t + minH);
+      if (h === 'se' && from[0] === from[2]) { l = Math.min(start[0], x); r = Math.max(start[0], x); t = Math.min(start[1], y); b = Math.max(start[1], y); }
+      cropping.box = [Math.max(0, l), Math.max(0, t), Math.min(1, r), Math.min(1, b)];
+    }
+    drawCrop();
+  };
+  const up = () => {
+    ui.classList.remove('dragging');
+    ui.removeEventListener('pointermove', move);
+    const [l, t, r, b] = cropping.box;
+    if (r - l < minW || b - t < minH) cropping.box = from[0] === from[2] ? [0, 0, 1, 1] : from;   // a click, not a drag
+    drawCrop();
+  };
+  ui.addEventListener('pointermove', move);
+  ui.addEventListener('pointerup', up, { once: true });
+  ui.addEventListener('pointercancel', up, { once: true });
+}
+
+// Trim margins: the box shrinks to what's printed on the page (anything not near-white), plus a little air.
+async function trimCrop() {
+  if (!cropping) return;
+  const { p } = cropping, base = p.page.getViewport({ scale: 1, rotation: rotationOf(p) });
+  const vp = p.page.getViewport({ scale: Math.min(2, 900 / Math.max(base.width, base.height)), rotation: rotationOf(p) });
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  try { await p.page.render({ canvas: c, canvasContext: g, viewport: vp, annotationMode: pdfjs.AnnotationMode.ENABLE_STORAGE }).promise; } catch { return; }
+  if (cropping?.p !== p) return;
+  const { data, width: W, height: H } = g.getImageData(0, 0, c.width, c.height);
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const o = 4 * (y * W + x);
+    if (data[o] < 235 || data[o + 1] < 235 || data[o + 2] < 235) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  // Shapes, highlights and text boxes added here count too.
+  for (const sh of shapes) {
+    if (sh.page !== p.id) continue;
+    const [a, b2, c2, d] = boxOf(sh), q = vp.convertToViewportPoint(a, b2), r = vp.convertToViewportPoint(c2, d);
+    x0 = Math.min(x0, q[0], r[0]); x1 = Math.max(x1, q[0], r[0]); y0 = Math.min(y0, q[1], r[1]); y1 = Math.max(y1, q[1], r[1]);
+  }
+  if (x1 < 0) return say('This page looks blank, so there are no margins to trim.');
+  const pad = 12 * vp.scale;   // about 12 points of air
+  cropping.box = [Math.max(0, x0 - pad) / W, Math.max(0, y0 - pad) / H, Math.min(W, x1 + 1 + pad) / W, Math.min(H, y1 + 1 + pad) / H];
+  drawCrop();
+}
+
+function applyCrop(all = false) {
+  if (!cropping) return;
+  const { p, box } = cropping, whole = box[0] <= 0.001 && box[1] <= 0.001 && box[2] >= 0.999 && box[3] >= 0.999;
+  const crop = whole ? null : pointsOf(p, box);
+  const targets = all ? pages.filter(q => sameSize(q, p)) : [p];
+  endCrop();
+  changePages(() => {
+    for (const q of targets) { if (crop) q.e.crop = crop; else delete q.e.crop; }
+  });
+  if (all) say(crop ? `Cropped ${targets.length} pages the same way.` : `Showing ${targets.length} pages whole again.`);
+  else if (crop) say(`Cropped page ${pages.indexOf(p) + 1}. Ctrl+Z brings it back.`);
 }
 
 /* ---------- saving ---------- */
@@ -2350,6 +2538,8 @@ async function build(list) {
     }
     const r = pg.node.lookup(N('Rotate'));
     pg.node.set(N('Rotate'), PDFNumber.of((((r?.asNumber?.() ?? 0) + list[k].rot) % 360 + 360) % 360));
+    const c = list[k].crop;   // cropped here: the page's visible box
+    if (c) pg.setCropBox(c[0], c[1], c[2] - c[0], c[3] - c[1]);
   }
   // Drop the annotations from an earlier session; the current set is written back below.
   for (const pg of out) {
@@ -2424,8 +2614,9 @@ async function build(list) {
           num(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy) + ' c h',
         ].join(' ');
       }
-      const look = ctx.stream(`${w} w ${rgb.join(' ')} RG ${path} S`, { Type: 'XObject', Subtype: 'Form', BBox: box });
-      dict = { Subtype: s.type === 'rect' ? 'Square' : 'Circle', Rect: box, BS: { W: w }, AP: { N: ctx.register(look) } };
+      const paint = s.fill ? `${rgb.join(' ')} rg ${rgb.join(' ')} RG ${path} B` : `${rgb.join(' ')} RG ${path} S`;
+      const look = ctx.stream(`${w} w ${paint}`, { Type: 'XObject', Subtype: 'Form', BBox: box });
+      dict = { Subtype: s.type === 'rect' ? 'Square' : 'Circle', Rect: box, BS: { W: w }, AP: { N: ctx.register(look) }, ...(s.fill ? { IC: rgb } : {}) };
     }
     pg.node.addAnnot(ctx.register(ctx.obj({ Type: 'Annot', ...dict, ...extra, F: 4, T: PDFString.of(MARK) })));
   }
@@ -2523,6 +2714,7 @@ const ICONS = {
   right: '<svg viewBox="0 0 16 16"><path d="M12.5 6.5A5 5 0 1 0 12 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M14.2 3.2l-1.7 3.3-3.4-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   note: '<svg viewBox="0 0 16 16"><path d="M3 1.8h6.5l3.5 3.5v8.9H3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 7.2v5M5.5 9.7h5" stroke="currentColor" stroke-width="1.4"/></svg>',
   move: '<svg viewBox="0 0 16 16"><path d="M8 1.8v12.4M5.5 4.3 8 1.8l2.5 2.5M5.5 11.7 8 14.2l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 8h3M10.5 8h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  crop: '<svg viewBox="0 0 16 16"><path d="M4.5 1.5v9.5a.5.5 0 0 0 .5.5h9.5M1.5 4.5h9.5a.5.5 0 0 1 .5.5v9.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   trash: '<svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
@@ -2628,7 +2820,13 @@ function togglePanel(id, field) {
 
 const thisPage = () => (pages.length ? new Set([pages[targetIndex()].id]) : null);
 
-for (const b of document.querySelectorAll('button[data-tool]')) b.onclick = () => setTool(b.dataset.tool);
+for (const b of document.querySelectorAll('button[data-tool]')) b.onclick = () => pickTool(b.dataset.tool);
+$('cropOk').onclick = () => applyCrop();
+$('cropAll').onclick = () => applyCrop(true);
+$('cropCancel').onclick = () => endCrop();
+$('cropTrim').onclick = () => trimCrop();
+$('cropWhole').onclick = () => { if (cropping) { cropping.box = [0, 0, 1, 1]; drawCrop(); } };
+for (const b of $('fills').children) { b.addEventListener('mousedown', e => e.preventDefault()); b.onclick = () => setFill(b.dataset.fill === '1'); }
 for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
 $('addImage').onclick = () => addImage();
 $('magicBtn').onclick = magicPaste;
@@ -2709,6 +2907,7 @@ const MENU = [
   ['right', 'Rotate right', ']', p => rotatePages(new Set([p.id]), 90)],
   ['note', 'Add note after this page', 'N', p => addNote(pages.indexOf(p))],
   ['move', 'Move page', 'M', p => startMove(p)],
+  ['crop', 'Crop page', 'C', p => startCrop(p)],
   null,
   ['trash', 'Delete page', 'Shift+Del', p => deletePages(new Set([p.id]))],
 ];
@@ -2782,7 +2981,7 @@ addEventListener('resize', () => {
 
 // Every shortcut, in one place. Keys listed in the buttons' labels and in the ? sheet.
 const KEYS = {
-  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => setTool('rect'), 'o': () => setTool('ellipse'), 't': () => setTool('text'), 'e': () => setTool('eraser'), 'i': () => addImage(),
+  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => pickTool('rect'), 'o': () => pickTool('ellipse'), 't': () => setTool('text'), 'e': () => setTool('eraser'), 'i': () => addImage(),
   '-': () => setTextSize(-1), '=': () => setTextSize(1), '+': () => setTextSize(1),
   'c': nextColor,
   '1': () => setWidth(1), '2': () => setWidth(2), '3': () => setWidth(4),
@@ -2835,6 +3034,11 @@ addEventListener('wheel', e => {
 
 addEventListener('keydown', e => {
   if ($('dlg').open) return;
+  if (cropping) {   // while cropping, only its own keys
+    if (e.key === 'Enter') { e.preventDefault(); applyCrop(); }
+    else if (e.key === 'Escape') { e.preventDefault(); endCrop(); }
+    return;
+  }
   if ($('menu').matches(':popover-open')) {   // the menu's own shortcuts act on its page
     const m = MENU.find(m => m && (m[2] === 'Shift+Del' ? e.key === 'Delete' && e.shiftKey : e.key.toLowerCase() === m[2].toLowerCase()));
     if (m && !(m[0] === 'trash' && pages.length < 2)) { e.preventDefault(); $('menu').hidePopover(); return m[3](menuPage); }

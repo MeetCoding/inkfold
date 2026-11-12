@@ -165,6 +165,12 @@ main.spread { display: grid; grid-template-columns: repeat(2, max-content); just
 .shapes { cursor: crosshair; touch-action: none; }
 .shapes .shape { pointer-events: none; }
 .shapes .hit { fill: none; stroke: transparent; pointer-events: stroke; }
+.shapes .hit.filled { pointer-events: all; }
+/* Outline or filled: the icons take the shape of the current tool, and the tool buttons show which is on. */
+#fills[data-shape="ellipse"] .r, #fills:not([data-shape="ellipse"]) .e { display: none; }
+#fills button svg :is(rect, ellipse) { transition: fill-opacity .15s; }
+button[data-tool="rect"] rect, button[data-tool="ellipse"] ellipse { transition: fill .15s; }
+body[data-fill="true"] button[data-tool="rect"] rect, body[data-fill="true"] button[data-tool="ellipse"] ellipse { fill: currentColor; fill-opacity: .9; }
 body[data-tool="select"] .shapes, body[data-tool="highlight"] .shapes { pointer-events: none; cursor: auto; touch-action: auto; }
 body[data-tool="select"] .hit { cursor: move; }
 body[data-tool="highlight"] .shapes * { pointer-events: none; }
@@ -486,3 +492,53 @@ button.primary:disabled, button.primary:disabled:hover, #panel .row button.prima
 .dropspot span::before { content: '\2193\00a0'; }
 .dropspot.v span { writing-mode: vertical-rl; padding: 12px 6px 14px; }
 .dropspot.v span::before { content: ''; }
+
+/* ---------- cropping a page ---------- */
+.cropper { position: absolute; inset: 0; z-index: 6; overflow: hidden; cursor: crosshair; touch-action: none; }
+.crop-box {
+  position: absolute; cursor: move; outline: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / .35), 0 0 0 100vmax rgb(20 20 18 / .5);
+  transition: box-shadow .2s;
+}
+.cropper.dragging .crop-box { box-shadow: 0 0 0 1px rgb(0 0 0 / .35), 0 0 0 100vmax rgb(20 20 18 / .62); }
+/* rule-of-thirds guides, while dragging */
+.crop-box .thirds {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background:
+    linear-gradient(to right, transparent calc(33.33% - .5px), rgb(255 255 255 / .55) calc(33.33% - .5px), rgb(255 255 255 / .55) calc(33.33% + .5px), transparent calc(33.33% + .5px), transparent calc(66.67% - .5px), rgb(255 255 255 / .55) calc(66.67% - .5px), rgb(255 255 255 / .55) calc(66.67% + .5px), transparent calc(66.67% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.33% - .5px), rgb(255 255 255 / .55) calc(33.33% - .5px), rgb(255 255 255 / .55) calc(33.33% + .5px), transparent calc(33.33% + .5px), transparent calc(66.67% - .5px), rgb(255 255 255 / .55) calc(66.67% - .5px), rgb(255 255 255 / .55) calc(66.67% + .5px), transparent calc(66.67% + .5px));
+}
+.cropper.dragging .thirds { opacity: 1; }
+/* corners: L-shaped brackets; edges: short bars */
+.crop-box i { position: absolute; width: 22px; height: 22px; }
+.crop-box i::before { content: ''; position: absolute; inset: 0; border: 0 solid #fff; filter: drop-shadow(0 0 1px rgb(0 0 0 / .6)); }
+.crop-box i[data-h="nw"] { left: -4px; top: -4px; cursor: nwse-resize; }
+.crop-box i[data-h="ne"] { right: -4px; top: -4px; cursor: nesw-resize; }
+.crop-box i[data-h="se"] { right: -4px; bottom: -4px; cursor: nwse-resize; }
+.crop-box i[data-h="sw"] { left: -4px; bottom: -4px; cursor: nesw-resize; }
+.crop-box i[data-h="nw"]::before { border-width: 4px 0 0 4px; }
+.crop-box i[data-h="ne"]::before { border-width: 4px 4px 0 0; }
+.crop-box i[data-h="se"]::before { border-width: 0 4px 4px 0; }
+.crop-box i[data-h="sw"]::before { border-width: 0 0 4px 4px; }
+.crop-box i[data-h="n"], .crop-box i[data-h="s"] { left: calc(50% - 14px); width: 28px; cursor: ns-resize; }
+.crop-box i[data-h="e"], .crop-box i[data-h="w"] { top: calc(50% - 14px); height: 28px; cursor: ew-resize; }
+.crop-box i[data-h="n"] { top: -4px; } .crop-box i[data-h="s"] { bottom: -4px; }
+.crop-box i[data-h="w"] { left: -4px; } .crop-box i[data-h="e"] { right: -4px; }
+.crop-box i[data-h="n"]::before { border-top-width: 4px; } .crop-box i[data-h="s"]::before { border-bottom-width: 4px; }
+.crop-box i[data-h="w"]::before { border-left-width: 4px; } .crop-box i[data-h="e"]::before { border-right-width: 4px; }
+
+#cropbar {
+  position: fixed; left: 50%; bottom: 22px; z-index: 20; display: flex; align-items: center; gap: 6px;
+  max-width: calc(100vw - 24px); padding: 7px 7px 7px 16px; color: #f4f3ef; background: #2b2a27;
+  border-radius: 12px; box-shadow: var(--shadow); translate: -50% 0; animation: cropbar-in .18s ease-out;
+}
+#cropbar[hidden] { display: none; }
+@keyframes cropbar-in { from { opacity: 0; translate: -50% 10px; } }
+#cropTitle { font-weight: 600; margin-right: 6px; white-space: nowrap; }
+#cropbar .gap { width: 10px; }
+#cropbar button { height: 30px; padding: 0 12px; border-radius: 8px; color: #e9e7e1; white-space: nowrap; }
+#cropbar button:hover { background: rgb(255 255 255 / .1); }
+#cropbar button.primary { background: #f4f3ef; color: #1f1e1c; font-weight: 600; padding: 0 16px; }
+#cropbar button.primary:hover { background: #fff; }
+@media (max-width: 620px) { #cropTitle, #cropbar .gap { display: none; } }
+body.cropping #toast { bottom: 78px; }

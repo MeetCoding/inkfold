@@ -2,7 +2,7 @@ Inkfold turns Chrome into a fast, private PDF annotator. Open any PDF and start 
 
 HIGHLIGHT, DRAW AND WRITE
 • A highlighter that follows the lines of real text, in any colour
-• Rectangles and ellipses to call out figures, tables and key passages
+• Rectangles and ellipses, outlined or filled, to call out figures, tables and key passages
 • Magic paste (Ctrl+V): a copied picture lands on the page, Markdown becomes a note, plain text a text box
 • Images: paste a screenshot or upload a picture, then move and resize it
 • Text boxes anywhere on the page, in any size and colour, with LaTeX math: type $E = mc^2$ and it's typeset
@@ -12,7 +12,7 @@ TURN MARKDOWN INTO NOTE PAGES
 Press N and type a note, or copy Markdown from your notes app, an AI chat or anywhere else and press Ctrl+V. Inkfold adds a cleanly typeset note page right after the page you're reading, as wide as that page and exactly as tall as your note. Headings, lists, checklists, tables, code, quotes and links are all supported, and so is LaTeX math ($inline$, $$display$$ and align-style environments), drawn as sharp vector graphics.
 
 ORGANISE PAGES
-• Right-click any page to rotate or delete it, or work on ranges like 2-4, 7, 10-end
+• Right-click any page to rotate, crop or delete it (Trim margins crops to the content), or work on ranges like 2-4, 7, 10-end
 • Move pages by drag and drop, merge several PDFs into one, and split a PDF into several files in one step: 1-3, 4-8, 9-end
 • Add pictures on a page, or as pages of their own
 • Everything can be undone

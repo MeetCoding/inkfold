@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.13.0: filled shapes, cropping pages
+
+- **Filled rectangles and ellipses**: an outline/filled choice sits next to the line thickness when drawing or with a shape selected, shaped like the current tool. Pressing <kbd>R</kbd> or <kbd>O</kbd> (or clicking the tool) again switches between them, and the tool's button fills in to show it. Filled shapes are saved as standard Square/Circle annotations with an interior colour, so other viewers fill them too, and they can be selected or erased anywhere inside.
+- **Crop a page**: right-click a page → **Crop page**. Drag the box's corner brackets or edges, move it, or draw a new one; **Trim margins** shrinks it to the page's content, **All pages** crops every page of that size the same way. Undoable; saved as the page's CropBox (nothing is cut from the file).
+- Switching to another drawing tool now deselects the selected shape, so its style isn't changed by mistake.
+
 ## 2.12.1: saving without the file dialog
 
 - **Save writes straight over the original, with no file dialog**, when Inkfold has the file's handle: a PDF opened with **Open** or dropped onto Inkfold. Chrome asks once for permission to save changes to that file; after that, Save just saves.
