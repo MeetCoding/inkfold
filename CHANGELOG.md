@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.12.1: saving without the file dialog
+
+- **Save writes straight over the original, with no file dialog**, when Inkfold has the file's handle: a PDF opened with **Open** or dropped onto Inkfold. Chrome asks once for permission to save changes to that file; after that, Save just saves.
+- **PDFs opened straight in Chrome** (double-clicked) give no handle, so their first save still uses the save dialog. Inkfold then remembers the file (in this browser only), so every later save, even after closing and reopening it, needs only Chrome's permission. For a file directly in Downloads, Desktop or Documents, that first dialog starts in that folder.
+- **Safety check**: if another program changed the file since you opened it, Save asks before replacing it. If the file was moved or deleted, Save says so, and the next Save asks where.
+- **Ctrl+Shift+S** saves a copy elsewhere (the dialog suggests “name (copy).pdf”).
+- Pressing Save while a save dialog was already open downloaded a stray copy; it now does nothing.
+
 ## 2.12.0: much better text recognition (PaddleOCR)
 
 - **New OCR engine**: scanned pages are now read with [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)'s PP-OCRv5 models (a text detector, an English recogniser and a small line-orientation model) on ONNX Runtime, replacing Tesseract. Everything is still bundled and runs on your computer.

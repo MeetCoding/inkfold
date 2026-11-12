@@ -76,7 +76,7 @@ Coming soon.
 | Zoom | − / + step through the presets. Click the percentage for a card with Fit width, Fit page, a zoom slider and preset buttons. |
 | File status | The gear button's panel shows text recognition progress (with Stop) and how much smaller the file could be, with a Compress button. |
 | Reopen | A PDF opens where you left it: same page, same spot, same zoom (remembered for your last 300 PDFs). A link to a page, such as `…pdf#page=12`, still opens that page. |
-| Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> opens Chrome's save dialog with the original file's name, so confirming Chrome's "replace" prompt writes over the original. Pick another name or folder to keep the original and save a copy. For a PDF opened straight from your computer, the dialog opens in that file's folder from the second save there on; for one picked with Open, it opens in that folder straight away (Chrome gives extensions no way to find the folder before that). |
+| Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> writes over the original PDF. When Inkfold has the file's handle (it was opened with **Open**, dropped here, or saved once before from where it was opened straight in Chrome), no dialog opens: Chrome only asks once for permission to save changes to that file, then saves go straight to it. Before writing, Inkfold checks the file wasn't changed by another program meanwhile, and asks if it was. A PDF opened straight from your computer (double-clicked) gives no handle, so its first save uses Chrome's save dialog, with the original's name (in Downloads, Desktop or Documents, the dialog starts in that folder); Inkfold then remembers the file, in this browser, for every later save. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> saves a copy elsewhere. |
 
 ### Keyboard shortcuts
 
@@ -98,7 +98,7 @@ Coming soon.
 | <kbd>Del</kbd> | Delete annotation | <kbd>Shift</kbd> <kbd>Del</kbd> | Delete page |
 | <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages and file panel |
 | <kbd>Ctrl</kbd> <kbd>V</kbd> | Magic paste | | |
-| <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> | Open (start page only) / save | <kbd>?</kbd> | Shortcut list |
+| <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> / <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>S</kbd> | Open (start page only) / save / save a copy | <kbd>?</kbd> | Shortcut list |
 
 Page shortcuts act on the page under the pointer, or else the page filling the window. Inside the Pages and file panel's range box, <kbd>[</kbd> <kbd>]</kbd> and <kbd>Shift</kbd> <kbd>Del</kbd> act on the typed range instead.
 

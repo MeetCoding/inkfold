@@ -82,6 +82,9 @@ let painted = null;   // resolves once the first page of the newly opened PDF is
 async function openPdf(buf, fileName) {
   if (dirty && !confirm('Discard the unsaved changes to the current PDF?')) return;
   const src = buf.url ? buf : new Uint8Array(buf);
+  // What's on disk, so a later save over the file can tell whether another program changed it meanwhile. Taken
+  // now, before pdf.js takes the bytes over.
+  const onDisk = src.url ? null : { size: src.length, hash: digest(src) };
   const id = ++loadId;
   const old = [...docs.values()];
   let main, err;
@@ -102,6 +105,7 @@ async function openPdf(buf, fileName) {
   io.disconnect();
   views.clear();
   [name, entries, shapes, history, future, sel, dirty] = [fileName, [], [], [], [], null, false];
+  disk = onDisk;
   syncUndo();
   ocrText.clear();
   ocrBusy.clear();
@@ -196,6 +200,9 @@ async function openUrl(src) {
   try {
     const file = decodeURIComponent(new URL(src).pathname.split('/').pop()) || 'document.pdf';
     srcUrl = src;
+    srcHandle = null;
+    srcStored = null;
+    if (src.startsWith('file:')) recallHandle(src).then(h => { if (srcUrl === src) srcStored = h ?? null; });
     let source;
     if (!src.startsWith('file:')) source = { url: src };   // read in pieces, first page first
     else if (IN_PAGE) source = await (globalThis.inkfoldEarly?.bytes ?? Promise.reject());   // read by content.js, as the tab opened
@@ -505,7 +512,7 @@ async function applyCompression(id, smaller) {
   main.bytes = smaller;
   dirty = true;
   showZip({ phase: 'done', before, after: smaller.length });
-  say(`Compressed. Saved copies are now about ${fmtSize(smaller.length)}. Press Save to keep it.`, { action: { label: 'Save', fn: save } });
+  say(`Compressed. Saved copies are now about ${fmtSize(smaller.length)}. Press Save to keep it.`, { action: { label: 'Save', fn: () => save() } });
 }
 
 async function checkCompression(id, encrypted) {
@@ -2153,10 +2160,12 @@ function setTool(t) {
 
 /* ---------- saving ---------- */
 
-// Where the open PDF came from, so Save can offer to write over it.
+// Where the open PDF came from, so Save can write over it.
 let srcHandle = null;   // a file handle, when it was picked or dropped here
 let srcPicked = false;  // picked with Open (so the open picker's id remembers its folder)
 let srcUrl = null;      // its address, when it was opened straight in Chrome
+let srcStored = null;   // for a file opened from its file:// address: the handle remembered from its first save
+let disk = null;        // { size, hash } of the file as it is on disk (as opened, or as last saved here)
 
 // Chrome remembers the last folder used with each picker id. A file opened from file:// gives no handle,
 // so each of its folders gets its own id: after the first save there, the picker opens in that folder.
@@ -2168,24 +2177,99 @@ function folderId() {
   return 'inkfold-' + h.toString(36);
 }
 
-async function save() {
+// A file straight in Downloads, Desktop or Documents (the usual places): Chrome can open its dialog right there.
+function wellKnown(url) {
+  const parts = decodeURIComponent(new URL(url).pathname).split('/').filter(Boolean);
+  const dir = parts.at(-2)?.toLowerCase(), home = parts.slice(0, -2).join('/').toLowerCase();
+  if (!/((^|\/)(users|home)\/[^/]+|^root)(\/onedrive[^/]*)?$/.test(home)) return null;
+  return { downloads: 'downloads', desktop: 'desktop', documents: 'documents' }[dir] ?? null;
+}
+
+async function digest(bytes) {
+  try { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join(''); }
+  catch { return null; }
+}
+
+// Handles to local files, remembered by their file:// address (in this browser only). A PDF opened from its
+// address gives Inkfold no handle, so its first save needs the save dialog; after that, saving over it only
+// needs Chrome's permission, even after the tab is closed and the file opened again.
+function handles(mode, f) {
+  return new Promise((ok, no) => {
+    const q = indexedDB.open('inkfold-files', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('h');
+    q.onerror = () => no(q.error);
+    q.onsuccess = () => {
+      const db = q.result, t = db.transaction('h', mode), r = f(t.objectStore('h'));
+      t.oncomplete = () => { db.close(); ok(r.result); };
+      t.onerror = t.onabort = () => { db.close(); no(t.error); };
+    };
+  });
+}
+const recallHandle = url => handles('readonly', s => s.get(url)).catch(() => null);
+const rememberHandle = (url, h) => handles('readwrite', s => s.put(h, url)).catch(() => {});
+const forgetHandle = url => handles('readwrite', s => s.delete(url)).catch(() => {});
+
+// Chrome's own "Save changes to …?" question, asked only when this tab doesn't already have permission.
+// 'yes', 'no', or 'gone' when the file can't be reached any more (moved, renamed or deleted).
+async function mayWrite(h) {
+  try {
+    let p = await h.queryPermission({ mode: 'readwrite' });
+    if (p !== 'granted') p = await h.requestPermission({ mode: 'readwrite' });
+    if (p !== 'granted') return 'no';
+    await h.getFile();
+    return 'yes';
+  } catch { return 'gone'; }
+}
+
+// Whether the file on disk is still the one opened (or last saved) here.
+async function unchanged(h) {
+  if (!disk) return true;
+  try {
+    const f = await h.getFile();
+    if (f.size !== disk.size) return false;
+    const [now, was] = await Promise.all([digest(await f.arrayBuffer()), disk.hash]);
+    return !now || !was || now === was;
+  } catch { return true; }
+}
+
+const PDF_TYPES = [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }];
+
+// Save writes over the original: with only Chrome's permission when Inkfold has the file's handle (opened with
+// Open, dropped here, or saved once before from its file:// address), or else through the save dialog, which
+// suggests the original's name and folder. Ctrl+Shift+S (copy) always asks where, for a new file.
+async function save(copy = false) {
   finishEdit();
   if (!docs.has('main')) return;
-  const suggestedName = name;   // the original's name, so saving writes over it (Chrome asks to confirm)
-  let handle = null;
-  if (window.showSaveFilePicker) {   // ask where first, while the click still counts as a user action
-    const opts = {
-      suggestedName, id: folderId(),
-      types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }],
-    };
+  let handle = null, over = false;
+  const own = copy ? null : srcHandle ?? srcStored;
+  if (own) {
+    const may = await mayWrite(own);
+    if (may === 'no') return say(`Not saved: Chrome wasn’t allowed to change “${own.name}”. To save a copy elsewhere, press Ctrl+Shift+S.`, true);
+    if (may === 'gone') {
+      if (own === srcStored) { forgetHandle(srcUrl); srcStored = null; }
+      if (own === srcHandle) srcHandle = null;
+      return say(`“${own.name}” has been moved, renamed or deleted. Press Save again to choose where to save.`, true);
+    }
+    if (!(await unchanged(own)) && !(await ask({
+      title: 'Changed on disk',
+      body: [para(`“${own.name}” has been changed by another program since you opened it here. Saving will replace those changes with this version.`)],
+      ok: 'Save over it',
+    }))) return;
+    handle = own;
+    over = true;
+  }
+  if (!handle && window.showSaveFilePicker) {   // ask where first, while the click still counts as a user action
+    const opts = { suggestedName: copy ? name.replace(/(\.pdf)?$/i, ' (copy).pdf') : name, id: folderId(), types: PDF_TYPES };
     // Chrome opens a file handle given as startIn one folder too high, so the original's folder comes from the
     // picker id instead: a file chosen with Open shares its id, which remembers the folder it was picked in.
     if (srcHandle) opts.id = srcPicked ? 'inkfold-open' : opts.id;
     else if (!srcUrl?.startsWith('file:')) opts.startIn = 'downloads';
+    else if (!copy && wellKnown(srcUrl)) { opts.startIn = wellKnown(srcUrl); delete opts.id; }   // the folder itself, not a remembered one
     try {
       handle = await showSaveFilePicker(opts);
     } catch (e) {
       if (e.name === 'AbortError') return;
+      if (/already active/i.test(e.message)) return;   // a save dialog is open already
       if (opts.startIn) {   // e.g. the original was moved since it was opened
         delete opts.startIn;
         try { handle = await showSaveFilePicker(opts); } catch (e2) { if (e2.name === 'AbortError') return; }
@@ -2199,11 +2283,16 @@ async function save() {
       const w = await handle.createWritable();
       await w.write(out);
       await w.close();
-      const over = srcHandle ? await srcHandle.isSameEntry(handle).catch(() => false)
+      if (!over) over = srcHandle ? await srcHandle.isSameEntry(handle).catch(() => false)
         : !!srcUrl?.startsWith('file:') && handle.name === name && await originalIs(out);
+      if (over) {
+        disk = { size: out.length, hash: digest(out) };
+        // Remember the original's handle, so the next save (in this tab or after reopening it) needs no dialog.
+        if (!srcHandle && srcUrl?.startsWith('file:') && handle !== srcStored) { srcStored = handle; rememberHandle(srcUrl, handle); }
+      }
       say(over ? `Saved over “${handle.name}”.` : `Saved “${handle.name}”.`);
     } else {
-      download(out, suggestedName);
+      download(out, name);
       say('Saved to your downloads.');
     }
     dirty = false;
@@ -2441,6 +2530,7 @@ async function openFile(f, handle = null, picked = false) {
   if (!f) return;
   srcHandle = handle;
   srcPicked = !!handle && !!picked;
+  srcUrl = srcStored = null;
   await openPdf(await f.arrayBuffer(), f.name);
   // Files dropped or picked here live on the extension's page, which Gemini in Chrome can't read.
   if (!IN_PAGE && docs.has('main') && firstTime('tip-gemini')) {
@@ -2583,7 +2673,7 @@ syncFull();
 $('note').onclick = () => addNote();
 $('pagesBtn').onclick = () => togglePanel('panel', 'range');
 $('keysBtn').onclick = () => togglePanel('keys');
-$('save').onclick = save;
+$('save').onclick = () => save();
 async function pickFile() {   // the File System Access picker gives a handle, so Save can open the same folder
   if (!window.showOpenFilePicker) return $('file').click();
   try {
@@ -2756,7 +2846,7 @@ addEventListener('keydown', e => {
   const typing = e.target.matches('input:not([type="color"]), select, textarea');
   if (e.altKey || e.isComposing) return;
   if (mod) {
-    const fn = k === 'z' && e.shiftKey ? redo : CTRL_KEYS[k];
+    const fn = k === 'z' && e.shiftKey ? redo : k === 's' && e.shiftKey ? () => save(true) : CTRL_KEYS[k];
     if (!fn || (typing && (k === 'z' || k === 'y' || k === 'v'))) return;   // text fields keep their own undo and paste
     e.preventDefault();
     return fn();
