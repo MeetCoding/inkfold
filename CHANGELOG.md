@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.18.0: hide the toolbar; Magic paste notices copies made beside the PDF
+
+- **Hidden toolbar** (Shift+H, or the new button next to full screen): the toolbar slides away and the pages get the whole window. Touch the top edge with the pointer and it slides back; it stays while you use it (and while a card opened from it is open), then slides away again when you move down. Meanwhile a small pill in the top-left corner shows the current tool and the page you're on. Inkfold remembers the choice; Shift+H or the button shows the toolbar for good.
+- **Magic paste notices copies made beside the PDF.** Copying from a panel next to the PDF (such as Gemini in Chrome) or another window while the PDF stays in view didn't count until you clicked back into the PDF, and then the card flashed up and closed at once, because that very click closed it. Now Inkfold looks about once a second while the PDF is in view but something else has the keyboard (for up to ten minutes at a time, comparing only a fingerprint of the clipboard), so the card is already there when you look back; and if it does open as you click, it waits until you let go, so the click doesn't close it.
+
 ## 2.17.0: Magic paste notices what you copy; every card closes the same three ways
 
 - **Magic paste opens by itself** when you come back to Inkfold with something new on the clipboard (copied in another tab or app): a picture, Markdown or text, with the usual choices. It shows once for each new thing, doesn't take the keyboard from what you were doing, and doesn't open for what was already on the clipboard when the PDF opened or for what you copy in Inkfold itself. A switch at the foot of the card turns this off (or back on). Ctrl+V still opens it any time.

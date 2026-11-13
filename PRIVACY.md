@@ -1,6 +1,6 @@
 # Inkfold privacy policy
 
-_Last updated: 11 November 2026 (version 2.17.0)_
+_Last updated: 11 November 2026 (version 2.18.0)_
 
 Inkfold is a Chrome extension for annotating PDFs. It is built so that your documents stay on your computer.
 
@@ -14,7 +14,7 @@ Inkfold does not collect, store on any server, sell, or share any personal data.
 |---|---|---|
 | **PDF files you open** | Shown in Inkfold so you can read and annotate them. For PDFs on the web, Inkfold reads the file again (usually from your browser's cache) from the site it came from. | Stays in your browser. Inkfold never sends it anywhere else. If you choose to share a tab with a browser assistant (such as Gemini in Chrome), that is between you and that assistant. |
 | **Your annotations, notes and page changes** | Kept in memory while the PDF is open, and written into a PDF file when you save (over the original, if you confirm that) or split. | Only into files you save, in folders you choose. |
-| **Clipboard text and pictures** | Read when you use **Magic paste** (the clipboard button or <kbd>Ctrl</kbd>+<kbd>V</kbd>), and, unless you turn it off on the Magic paste card, when you come back to Inkfold's tab, to see whether you've copied something new and offer it. It's used only if you choose an option. | Stays in your browser. It is not stored or sent anywhere, except into copies you save if you add it. |
+| **Clipboard text and pictures** | Read when you use **Magic paste** (the clipboard button or <kbd>Ctrl</kbd>+<kbd>V</kbd>), and, unless you turn it off on the Magic paste card, to notice something new you've copied and offer it: when you come back to Inkfold's tab, and about once a second while the PDF is in view but you're working elsewhere (another window, or a panel beside it such as Gemini's), for up to ten minutes at a time. Between offers only a fingerprint (the text, and a picture's type and size) is compared. It's used only if you choose an option. | Stays in your browser. It is not stored or sent anywhere, except into copies you save if you add it. |
 | **Pictures and PDFs you add** | Pictures are read only when you pick one with **Add an image**, and placed on a page or on a new page. PDFs you add to **Merge PDFs** are read only to count their pages and to merge them into the file you save. | Stays in your browser, and goes only into copies you save. |
 | **Images of scanned pages** | When a PDF has pages without text, Inkfold renders those pages as images and recognises their text, in a hidden page of the extension, with the text-recognition engine bundled in the extension. | Stays in your browser. The recognised text is kept in memory, and written only into copies you save. |
 | **Settings and reading places** | Whether PDFs open in Inkfold automatically, your last colours and zoom, which tips you have already seen, and, for each of your last 300 PDFs, the page and zoom you were at (kept under an anonymous fingerprint of the file, not its name or contents). | Stored locally in Chrome's extension storage on your device. |
@@ -28,7 +28,7 @@ Inkfold asks for permissions only to do the job described above:
 
 - **Access to all websites**: a small script checks whether a page is a PDF. Only if it is does Inkfold replace Chrome's built-in PDF viewer in that tab. It also lets Inkfold load the PDF from whichever site it's on. Inkfold never reads or changes ordinary web pages.
 - **activeTab**: to open the PDF in your current tab when you click the toolbar icon.
-- **clipboardRead** and **offscreen**: to read the text or picture you copied for **Magic paste** (when you use it, or, unless you turn this off, when you return to Inkfold's tab, to notice something new you've copied), and to recognise text on scanned pages. Both happen in a hidden page of the extension's own, on your device. (A PDF you open from your computer is read by a small page of the extension inside that PDF's own tab, which can only read that one file.)
+- **clipboardRead** and **offscreen**: to read the text or picture you copied for **Magic paste** (when you use it, or, unless you turn this off, to notice something new you've copied while the PDF is in view), and to recognise text on scanned pages. Both happen in a hidden page of the extension's own, on your device. (A PDF you open from your computer is read by a small page of the extension inside that PDF's own tab, which can only read that one file.)
 - **contextMenus** and **storage**: for the option to turn automatic opening on or off, to remember your settings, and to remember where you were in each PDF.
 
 ## Data sharing and sale

@@ -579,3 +579,26 @@ dialog .xclose { top: 10px; right: 10px; }
   font-size: 12px; color: var(--dim); cursor: pointer;
 }
 #magic .auto input { margin: 0; accent-color: var(--accent); }
+
+/* ---------- hidden toolbar: it slides away, and comes back while the pointer is at the top edge ---------- */
+body.barless header {
+  position: fixed; left: 0; right: 0; top: 0; transform: translateY(calc(-100% - 2px));
+  transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s;
+}
+body.barless.reveal header { transform: none; box-shadow: var(--shadow); }
+body.barless .page { scroll-margin-top: 16px; }
+#barBtn { width: 28px; padding: 0; display: grid; place-items: center; }
+body.barless #barBtn svg { transform: rotate(180deg); }
+/* the current tool and page, small, in the top-left corner while the toolbar is away */
+#status {
+  position: fixed; left: 10px; top: 8px; z-index: 3; display: none; align-items: center; gap: 7px;
+  padding: 3px 10px 3px 7px; border-radius: 999px; font-size: 11.5px; color: var(--dim); pointer-events: none;
+  background: color-mix(in srgb, var(--bar) 82%, transparent); border: 1px solid var(--line);
+  backdrop-filter: blur(6px); box-shadow: 0 1px 4px rgb(0 0 0 / .08); font-variant-numeric: tabular-nums;
+  transition: opacity .2s;
+}
+body.barless #status { display: flex; }
+body.barless.reveal #status { opacity: 0; }
+#status .tool { display: flex; align-items: center; gap: 5px; color: var(--ink); }
+#status .tool svg { width: 13px; height: 13px; }
+#status .pg::before { content: ''; display: inline-block; width: 1px; height: 10px; margin-right: 7px; vertical-align: -1px; background: var(--line); }

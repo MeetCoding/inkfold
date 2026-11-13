@@ -186,7 +186,7 @@ async function openPdf(buf, fileName, from = {}) {
   // that's much bigger than it needs to be (once per file), and recognise the text on pages that have none, such as scans.
   await Promise.race([painted, new Promise(r => setTimeout(r, 1500))]);
   if (id !== loadId) return true;
-  if (autoMagic && lastClip === null) clipBaseline();   // what's already on the clipboard isn't news
+  if (autoMagic && lastClip === null) clipBaseline().then(watchClipboard);   // what's already on the clipboard isn't news
   checkCompression(id, !!info.EncryptFilterName);
   autoOcr(id);
 
@@ -1139,7 +1139,7 @@ function fitZoom(mode) {   // sized so that the widest / tallest page fits, so m
     ? widest(dims.filter((_, i) => i % 2 === 0)) + (dims.length > 1 ? GAP + widest(dims.filter((_, i) => i % 2)) : 0)
     : widest(dims);
   const h = Math.max(...dims.map(v => v.height));
-  const W = document.documentElement.clientWidth - 2 * 12 - 2, H = innerHeight - header.offsetHeight - 2 * GAP;
+  const W = document.documentElement.clientWidth - 2 * 12 - 2, H = innerHeight - barHeight() - 2 * GAP;
   return mode === 'page' ? Math.min(W / w, H / h) : mode === 'width' ? W / w : Math.min(W / w, 1.25);
 }
 
@@ -1732,27 +1732,50 @@ async function readClip() {
   ]);
   return { img: img || null, t: lines(text ?? '').replace(/^\n+|\s+$/g, '') };
 }
-const clipKey = ({ img, t }) => t + '\u0000' + (img ? img.length + ':' + img.slice(-64) : '');
+// The clipboard's fingerprint (its text, and a picture's type and size): cheap enough to check often.
+const clipStamp = async () => {
+  const st = await chrome.runtime.sendMessage({ type: 'clipboardStamp' }).catch(() => null);
+  return st ? lines(st.text ?? '').replace(/^\n+|\s+$/g, '') + '\u0000' + (st.pic ?? '') : null;
+};
 
-// Magic paste notices what you copy elsewhere: coming back to this tab (or window) with something new on the
-// clipboard opens its card by itself. What was there when the PDF opened, and what you copy in Inkfold itself,
-// don't count; each new thing is offered once. It can be turned off on the card.
+// Magic paste notices what you copy elsewhere, and its card opens by itself: in another tab or app, or in a panel
+// beside the PDF (such as Gemini's), where this tab stays in view but isn't the one in use. It looks whenever you
+// come back, and about once a second while the PDF is in view but you're working elsewhere. What was there when the
+// PDF opened, and what you copy in Inkfold itself, don't count; each new thing is offered once. It can be turned off
+// on the card.
 let lastClip = null, clipCheck = 0, autoMagic = store.get('autoMagic', true);
 async function noticeClipboard() {
   if (!autoMagic || !pages.length || document.hidden) return;
-  const id = ++clipCheck, c = await readClip();
-  if (id !== clipCheck) return;
-  const key = clipKey(c), first = lastClip === null;
-  if (key === lastClip) return;
+  const id = ++clipCheck, key = await clipStamp();
+  if (id !== clipCheck || key === null || key === lastClip) return;
+  const first = lastClip === null;
   lastClip = key;
-  if (first || (!c.img && !c.t)) return;
+  if (first || key === '\u0000') return;
+  if (pointerHeld) await new Promise(r => addEventListener('pointerup', () => setTimeout(r), { once: true, capture: true }));   // (so the click that brought you back doesn't close it straight away)
   // Not in the middle of something: a dialog or card open, a text box being typed, a crop or a page move.
-  if ($('dlg').open || document.querySelector(':popover-open') || editing || cropping || moving || drag) return;
-  magicPaste({ auto: true, clip: c });
+  if (id !== clipCheck || $('dlg').open || document.querySelector(':popover-open') || editing || cropping || moving || drag) return;
+  const c = await readClip();
+  if (id === clipCheck && (c.img || c.t)) magicPaste({ auto: true, clip: c });
 }
-const clipBaseline = async () => { const c = await readClip(); lastClip = clipKey(c); };
-addEventListener('focus', () => noticeClipboard());
-document.addEventListener('visibilitychange', () => { if (!document.hidden) noticeClipboard(); });
+const clipBaseline = async () => { const k = await clipStamp(); if (k !== null) lastClip = k; };
+let pointerHeld = false;
+addEventListener('pointerdown', () => { pointerHeld = true; }, true);
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { pointerHeld = false; }, true);
+// While the PDF is in view but something else has the keyboard, look about once a second (for ten minutes at most).
+let clipPoll = 0, clipPollUntil = 0;
+function watchClipboard() {
+  clearInterval(clipPoll);
+  clipPoll = 0;
+  if (!autoMagic || document.hidden || document.hasFocus()) return;
+  clipPollUntil = Date.now() + 10 * 60_000;
+  clipPoll = setInterval(() => {
+    if (document.hidden || document.hasFocus() || Date.now() > clipPollUntil) { clearInterval(clipPoll); clipPoll = 0; return; }
+    noticeClipboard();
+  }, 1000);
+}
+addEventListener('focus', () => { watchClipboard(); noticeClipboard(); });
+addEventListener('blur', watchClipboard);
+document.addEventListener('visibilitychange', () => { watchClipboard(); if (!document.hidden) noticeClipboard(); });
 for (const ev of ['copy', 'cut']) addEventListener(ev, () => setTimeout(clipBaseline, 60));   // copied here: not news
 
 // Looks at the clipboard and offers what fits: a picture goes on this page, Markdown becomes a note
@@ -1773,7 +1796,7 @@ async function magicPaste({ auto = false, clip = null } = {}) {
     place();
   }
   const { img, t } = clip ?? await readClip();
-  lastClip = clipKey({ img, t });   // seen: it won't open by itself for this again
+  if (!auto) clipBaseline();   // seen: it won't open by itself for this again
   const md = !!t && looksLikeMarkdown(t);
   const go = fn => () => { box.hidePopover(); fn(); };
   const acts = [];
@@ -1807,7 +1830,7 @@ async function magicPaste({ auto = false, clip = null } = {}) {
 function autoToggle() {
   const cb = el2('input', { type: 'checkbox' });
   cb.checked = autoMagic;
-  cb.onchange = () => { autoMagic = cb.checked; store.set('autoMagic', autoMagic); if (autoMagic) clipBaseline(); };
+  cb.onchange = () => { autoMagic = cb.checked; store.set('autoMagic', autoMagic); if (autoMagic) { clipBaseline(); watchClipboard(); } };
   return el2('label', { class: 'auto' }, cb, 'Open this when I copy something new');
 }
 
@@ -2292,6 +2315,7 @@ function redo() {
 function setFill(f) {
   fillShapes = f;
   store.set('fill', f);
+  syncStatus();
   if (sel && (sel.type === 'rect' || sel.type === 'ellipse') && !!sel.fill !== f) {
     commit(snapshot());
     if (f) sel.fill = true; else delete sel.fill;
@@ -2322,6 +2346,7 @@ function setTool(t) {
   if (t === 'eraser' || (sel && t !== 'select' && t !== sel.type)) select(null);   // a new tool starts fresh
   tool = document.body.dataset.tool = t;
   for (const b of document.querySelectorAll('button[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === t);
+  syncStatus();
   if (t === 'highlight') highlightSelection();   // text already selected? highlight it straight away
   syncControls();
 }
@@ -2342,7 +2367,7 @@ function startCrop(p) {
   p.cropping = true;
   size(p);
   // The whole page should be in view, clear of the crop bar: zoom out for a moment if it isn't (put back after).
-  const roomH = innerHeight - header.offsetHeight - 100, roomW = document.documentElement.clientWidth - 48;
+  const roomH = innerHeight - barHeight() - 100, roomW = document.documentElement.clientWidth - 48;
   const over = Math.max(p.vp.height / roomH, p.vp.width / roomW), before = { zoom, fit };
   if (over > 1) setZoom(zoom / over, null, false, true);
   render(p);
@@ -2359,7 +2384,7 @@ function startCrop(p) {
   $('cropbar').hidden = false;
   document.body.classList.add('cropping');
   const r = p.div.getBoundingClientRect();
-  if (r.top < header.offsetHeight + 8 || r.bottom > innerHeight - 76) p.div.scrollIntoView({ block: 'center', behavior: over > 1 ? 'instant' : 'smooth' });
+  if (r.top < barHeight() + 8 || r.bottom > innerHeight - 76) p.div.scrollIntoView({ block: 'center', behavior: over > 1 ? 'instant' : 'smooth' });
   $('cropOk').focus();
 }
 
@@ -2379,7 +2404,7 @@ function endCrop() {
 
 // Bring a page into view: centred if it fits the window, else its top just under the toolbar.
 function inView(p) {
-  const tall = p.div.getBoundingClientRect().height > innerHeight - header.offsetHeight - 24;
+  const tall = p.div.getBoundingClientRect().height > innerHeight - barHeight() - 24;
   p.div.scrollIntoView({ block: tall ? 'start' : 'center', behavior: 'instant' });
 }
 
@@ -2917,7 +2942,7 @@ function goPage(dir) { jumpTo(currentIndex() + dir); }
 // moving at once, never overshoots, and keeps up with pages turning faster than it could jump.
 const FLIP_FIRST = 260, FLIP_EVERY = 150, FLIP_FASTEST = 80, FLIP_OMEGA = 0.026;   // ms, ms, ms, 1/ms
 const flip = { k: -1, dir: 0, held: false, next: 0, turns: 0, v: 0, t: 0, raf: 0 };
-const flipTop = k => pages[k].div.getBoundingClientRect().top + scrollY - 64;   // as scrollIntoView({ block: 'start' })
+const flipTop = k => pages[k].div.getBoundingClientRect().top + scrollY - (barless ? GAP : 64);   // as scrollIntoView({ block: 'start' })
 
 function stepPage(dir, repeat = false) {
   if (!pages.length || repeat) return;   // holding is paced below, not by the keyboard's repeat
@@ -3004,7 +3029,56 @@ let pageTimer = 0;
 function showPage(k = currentIndex()) {
   $('pageOf').textContent = `/ ${pages.length}`;
   if (document.activeElement !== $('pageNum')) $('pageNum').value = pages.length ? k + 1 : '';
+  if (barless) $('status').lastChild.textContent = pages.length ? `${k + 1} / ${pages.length}` : '';
 }
+
+// Hidden toolbar (Shift+H, or its button): the toolbar slides away and the pages get the whole window. Touching the
+// top edge with the pointer (or tabbing into it) brings it back; it stays while it's being used, or a card opened
+// from it is open, and slides away again once the pointer moves down. A small pill in the top-left corner shows the
+// current tool and page meanwhile. Remembered.
+let barless = store.get('barless', false);
+const barHeight = () => (barless ? 0 : header.offsetHeight);
+const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
+function syncStatus() {
+  if (!barless) return;
+  const b = document.querySelector(`button[data-tool="${tool}"]`), t = $('status').firstChild;
+  const filled = (tool === 'rect' || tool === 'ellipse') && fillShapes ? ', filled' : '';
+  t.replaceChildren();
+  if (b?.querySelector('svg')) t.append(b.querySelector('svg').cloneNode(true));
+  t.append((TOOL_NAMES[tool] ?? tool) + filled);
+  showPage();
+}
+function setBarless(on, quiet = false) {
+  barless = on;
+  store.set('barless', on);
+  document.body.classList.toggle('barless', on);
+  document.body.classList.remove('reveal');
+  $('barBtn').setAttribute('aria-pressed', on);
+  const label = on ? 'Show the toolbar (Shift+H)' : 'Hide the toolbar (Shift+H)';
+  $('barBtn').title = on ? 'Show the toolbar for good (Shift+H)' : 'Hide the toolbar (Shift+H): it comes back when the pointer touches the top edge';
+  $('barBtn').setAttribute('aria-label', label);
+  if (fit && pages.length) setZoom(fitZoom(fit), fit, true);
+  syncStatus();
+  if (!quiet) say(on ? 'Toolbar hidden. Touch the top edge with the pointer to bring it back; Shift+H shows it for good.' : '');
+}
+let barTabbed = false;   // tabbed into the toolbar (rather than left focused there by a click)
+addEventListener('keydown', e => { if (e.key === 'Tab') barTabbed = true; }, true);
+addEventListener('pointerdown', () => { barTabbed = false; }, true);
+const barInUse = () => (barTabbed && header.contains(document.activeElement)) || header.querySelector('input:focus') || !!document.querySelector('#panel:popover-open, #zoomPop:popover-open, #keys:popover-open, #magic:popover-open, #find:popover-open, #palette:hover');
+function revealBar(on) {
+  if (!barless) return;
+  document.body.classList.toggle('reveal', on);
+}
+addEventListener('pointermove', e => {
+  if (!barless || e.pointerType === 'touch') return;
+  const shown = document.body.classList.contains('reveal');
+  if (e.clientY <= 6) revealBar(true);
+  else if (shown && e.clientY > header.offsetHeight + 28 && !barInUse()) revealBar(false);
+}, { passive: true });
+// Leaving the page across its top edge (a quick flick up to the tabs) counts as touching it.
+document.addEventListener('mouseout', e => { if (barless && !e.relatedTarget && e.clientY <= 12) revealBar(true); });
+header.addEventListener('focusin', () => { if (barTabbed) revealBar(true); });   // tabbed into
+header.addEventListener('focusout', () => setTimeout(() => { if (!barInUse() && !header.matches(':hover')) revealBar(false); }));
 addEventListener('scroll', () => {
   if (!pageTimer) pageTimer = requestAnimationFrame(() => { pageTimer = 0; showPage(); });
   notePlace();
@@ -3066,6 +3140,8 @@ buildZoomPop();
 syncUndo();
 $('spread').onclick = () => setSpread(!spread);
 $('full').onclick = toggleFull;
+$('barBtn').onclick = () => setBarless(!barless);
+if (barless) setBarless(true, true);
 
 // Full screen: the whole viewer, toolbar included. The same button (or Shift+F, or Esc) leaves it.
 // Chrome's own full screen (F11) is different: a page can't leave it, so the button says to press F11.
@@ -3290,6 +3366,7 @@ addEventListener('keydown', e => {
   if (typing) return;
   if (k === 'delete' && e.shiftKey) { e.preventDefault(); const ids = thisPage(); return ids && deletePages(ids); }
   if (k === 'f' && e.shiftKey) { e.preventDefault(); return toggleFull(); }
+  if (k === 'h' && e.shiftKey) { e.preventDefault(); return setBarless(!barless); }
   if (!e.shiftKey && (k === 'arrowdown' || k === 'arrowup')) { e.preventDefault(); if (flip.raf) flipEnd(); return glideStart(k === 'arrowdown' ? 1 : -1); }
   if (!e.shiftKey && (k === 'arrowleft' || k === 'arrowright')) { e.preventDefault(); return stepPage(k === 'arrowright' ? 1 : -1, e.repeat); }
   if (k === 'e' && !e.shiftKey) {   // the eraser while E is held; back to the pointer when it's let go

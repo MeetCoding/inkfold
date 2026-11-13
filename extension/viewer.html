@@ -85,6 +85,7 @@
     <button id="spread" title="Two-page view (D)" aria-label="Two-page view (D)" aria-pressed="false">
       <svg viewBox="0 0 16 16"><rect x="1.5" y="3" width="5.75" height="10" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="8.75" y="3" width="5.75" height="10" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
     </button>
+    <button id="barBtn" title="Hide the toolbar (Shift+H): it comes back when the pointer touches the top edge" aria-label="Hide the toolbar (Shift+H)" aria-pressed="false"><svg viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 5.5h11" stroke="currentColor" stroke-width="1.3"/><path d="M5.8 10.2 8 8l2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="full" title="Full screen (Shift+F)" aria-label="Full screen (Shift+F)" aria-pressed="false">
       <svg class="enter" viewBox="0 0 16 16"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <svg class="exit" viewBox="0 0 16 16"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -106,6 +107,7 @@
   </div>
  </div>
 </header>
+<div id="status" aria-hidden="true"><span class="tool"></span><span class="pg"></span></div>
 <main id="pages" aria-label="Document"></main>
 
 <div id="panel" class="pop" popover aria-labelledby="panelTitle">
@@ -210,7 +212,7 @@
     <dl>
       <dt>View</dt>
       <dd><kbd>Ctrl +</kbd> <kbd>Ctrl −</kbd> Zoom</dd><dd><kbd>Ctrl 0</kbd> 100%</dd><dd><kbd>W</kbd> Fit width</dd><dd><kbd>F</kbd> Fit page</dd>
-      <dd><kbd>D</kbd> Two-page view</dd><dd><kbd>Shift F</kbd> Full screen</dd><dd><kbd>←</kbd> <kbd>→</kbd> or <kbd>K</kbd> <kbd>J</kbd> Previous, next page</dd><dd><kbd>↑</kbd> <kbd>↓</kbd> Scroll smoothly</dd><dd><kbd>G</kbd> Go to page</dd>
+      <dd><kbd>D</kbd> Two-page view</dd><dd><kbd>Shift F</kbd> Full screen</dd><dd><kbd>Shift H</kbd> Hide or show the toolbar</dd><dd><kbd>←</kbd> <kbd>→</kbd> or <kbd>K</kbd> <kbd>J</kbd> Previous, next page</dd><dd><kbd>↑</kbd> <kbd>↓</kbd> Scroll smoothly</dd><dd><kbd>G</kbd> Go to page</dd>
       <dt>Pages</dt>
       <dd><kbd>N</kbd> Add a note</dd><dd><kbd>[</kbd> <kbd>]</kbd> Rotate page</dd><dd><kbd>M</kbd> Move page</dd><dd><kbd>Shift Del</kbd> Delete page</dd>
       <dd><kbd>Ctrl F</kbd> Find text</dd><dd><kbd>P</kbd> Pages and file</dd><dd><kbd>?</kbd> This list</dd>

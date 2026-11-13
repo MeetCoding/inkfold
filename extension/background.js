@@ -36,6 +36,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === 'fileAccess') { chrome.extension.isAllowedFileSchemeAccess().then(reply); return true; }
   if (msg?.type === 'openSettings') { chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` }); return false; }
   if (msg?.type === 'readClipboardImage') { offscreen({ type: 'offscreen:readClipboardImage' }).then(reply, () => reply(null)); return true; }
+  if (msg?.type === 'clipboardStamp') { offscreen({ type: 'offscreen:clipboardStamp' }).then(reply, () => reply(null)); return true; }
   if (msg?.type === 'readClipboard') { offscreen({ type: 'offscreen:readClipboard' }).then(reply, () => reply(null)); return true; }
   if (msg?.type === 'ocr') { offscreen({ type: 'offscreen:ocr', image: msg.image }).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg?.type === 'myTabFile') {   // reader.js asks for the local file open in its own tab, and gets only that
