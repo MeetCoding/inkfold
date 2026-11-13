@@ -561,3 +561,21 @@ body.cropping #toast { bottom: 78px; }
 /* white needs a firmer rim to show on the light toolbar */
 #palette button[data-c="#ffffff"] .dot { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .32); }
 #palette button[data-c="#ffffff"][aria-checked="true"] .dot { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .32), 0 0 0 2px var(--bar), 0 0 0 3.5px var(--ink); }
+
+/* ---------- the × on every card and dialog (Esc and a click outside close them too) ---------- */
+.xclose {
+  position: absolute; top: 8px; right: 8px; z-index: 1; width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center; border-radius: 8px; color: var(--dim); background: none;
+}
+.xclose:hover { color: var(--ink); background: var(--hover); }
+.xclose svg { width: 16px; height: 16px; }
+dialog .xclose { top: 10px; right: 10px; }
+.pop h2, dialog h2, #magic h2, #zoomPop h2 { padding-right: 34px; }
+#zoomPop h2 { margin: 2px 0 10px 2px; font-size: 13px; }
+#magic { padding-top: 14px; }
+#magic > .kind:only-of-type:first-of-type { padding-right: 34px; }
+#magic .auto {
+  display: flex; align-items: center; gap: 7px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: 12px; color: var(--dim); cursor: pointer;
+}
+#magic .auto input { margin: 0; accent-color: var(--accent); }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.17.0: Magic paste notices what you copy; every card closes the same three ways
+
+- **Magic paste opens by itself** when you come back to Inkfold with something new on the clipboard (copied in another tab or app): a picture, Markdown or text, with the usual choices. It shows once for each new thing, doesn't take the keyboard from what you were doing, and doesn't open for what was already on the clipboard when the PDF opened or for what you copy in Inkfold itself. A switch at the foot of the card turns this off (or back on). Ctrl+V still opens it any time.
+- **Every card and dialog closes three ways**: the × in its top-right corner, Esc, or a click outside it. That's the Pages and file panel, Magic paste and the image card, Find, the zoom card (which now has a small "Zoom" title), the shortcuts sheet, and dialogs such as Add a note (a drag that starts inside a dialog and ends outside it doesn't close it).
+
 ## 2.16.0: smooth page turning, hold E to erase
 
 - **Holding ← or →** now turns pages smoothly at a quick, steady pace (a little faster the longer you hold), with the view gliding along the whole time, and settles on the page you reach when you let go. Before, the view hardly moved at first and then shot ahead, because each key repeat restarted the scroll. Quick taps still add up, one page each.

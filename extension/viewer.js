@@ -186,6 +186,7 @@ async function openPdf(buf, fileName, from = {}) {
   // that's much bigger than it needs to be (once per file), and recognise the text on pages that have none, such as scans.
   await Promise.race([painted, new Promise(r => setTimeout(r, 1500))]);
   if (id !== loadId) return true;
+  if (autoMagic && lastClip === null) clipBaseline();   // what's already on the clipboard isn't news
   checkCompression(id, !!info.EncryptFilterName);
   autoOcr(id);
 
@@ -1597,7 +1598,7 @@ function showCard(box, anchor, title, kind, preview, acts) {
     b.onclick = () => { box.hidePopover(); fn(); };
     return b;
   });
-  box.replaceChildren(el2('h2', { id: 'magicTitle' }, title), el2('p', { class: 'kind' }, kind), ...(preview ? [preview] : []), el2('div', { class: 'acts' }, ...buttons));
+  box.replaceChildren(closeX(() => box.hidePopover()), el2('h2', { id: 'magicTitle' }, title), el2('p', { class: 'kind' }, kind), ...(preview ? [preview] : []), el2('div', { class: 'acts' }, ...buttons));
   if (!box.matches(':popover-open')) box.showPopover();
   const r = anchor.getBoundingClientRect();
   box.style.top = r.bottom + 8 + 'px';
@@ -1723,23 +1724,56 @@ function looksLikeMarkdown(t) {
   return score >= 2;
 }
 
-// Looks at the clipboard and offers what fits: a picture goes on this page, Markdown becomes a note
-// after it, plain text becomes a text box on it.
-async function magicPaste() {
-  if (!pages.length) return;
-  const box = $('magic'), at = targetIndex(), p = pages[at];
-  if (box.matches(':popover-open') && box.dataset.card === 'magic') return box.hidePopover();
-  box.dataset.card = 'magic';
-  box.replaceChildren(el2('p', { class: 'kind' }, 'Looking at your clipboard…'));
-  box.showPopover();
-  const r = $('magicBtn').getBoundingClientRect();
-  box.style.top = r.bottom + 8 + 'px';
-  box.style.left = Math.max(12, Math.min(r.left, innerWidth - box.offsetWidth - 12)) + 'px';
+// What's on the clipboard: { img (a data: URL or null), t (text, tidied) }.
+async function readClip() {
   const [img, text] = await Promise.all([
     chrome.runtime.sendMessage({ type: 'readClipboardImage' }).catch(() => null),
     chrome.runtime.sendMessage({ type: 'readClipboard' }).catch(() => null),
   ]);
-  const t = lines(text ?? '').replace(/^\n+|\s+$/g, '');
+  return { img: img || null, t: lines(text ?? '').replace(/^\n+|\s+$/g, '') };
+}
+const clipKey = ({ img, t }) => t + '\u0000' + (img ? img.length + ':' + img.slice(-64) : '');
+
+// Magic paste notices what you copy elsewhere: coming back to this tab (or window) with something new on the
+// clipboard opens its card by itself. What was there when the PDF opened, and what you copy in Inkfold itself,
+// don't count; each new thing is offered once. It can be turned off on the card.
+let lastClip = null, clipCheck = 0, autoMagic = store.get('autoMagic', true);
+async function noticeClipboard() {
+  if (!autoMagic || !pages.length || document.hidden) return;
+  const id = ++clipCheck, c = await readClip();
+  if (id !== clipCheck) return;
+  const key = clipKey(c), first = lastClip === null;
+  if (key === lastClip) return;
+  lastClip = key;
+  if (first || (!c.img && !c.t)) return;
+  // Not in the middle of something: a dialog or card open, a text box being typed, a crop or a page move.
+  if ($('dlg').open || document.querySelector(':popover-open') || editing || cropping || moving || drag) return;
+  magicPaste({ auto: true, clip: c });
+}
+const clipBaseline = async () => { const c = await readClip(); lastClip = clipKey(c); };
+addEventListener('focus', () => noticeClipboard());
+document.addEventListener('visibilitychange', () => { if (!document.hidden) noticeClipboard(); });
+for (const ev of ['copy', 'cut']) addEventListener(ev, () => setTimeout(clipBaseline, 60));   // copied here: not news
+
+// Looks at the clipboard and offers what fits: a picture goes on this page, Markdown becomes a note
+// after it, plain text becomes a text box on it. auto: opened by itself, for something new on the clipboard.
+async function magicPaste({ auto = false, clip = null } = {}) {
+  if (!pages.length) return;
+  const box = $('magic'), at = targetIndex(), p = pages[at];
+  if (!auto && box.matches(':popover-open') && box.dataset.card === 'magic') return box.hidePopover();
+  box.dataset.card = 'magic';
+  const place = () => {
+    const r = $('magicBtn').getBoundingClientRect();
+    box.style.top = r.bottom + 8 + 'px';
+    box.style.left = Math.max(12, Math.min(r.left, innerWidth - box.offsetWidth - 12)) + 'px';
+  };
+  if (!clip) {
+    box.replaceChildren(closeX(() => box.hidePopover()), el2('p', { class: 'kind' }, 'Looking at your clipboard…'));
+    box.showPopover();
+    place();
+  }
+  const { img, t } = clip ?? await readClip();
+  lastClip = clipKey({ img, t });   // seen: it won't open by itself for this again
   const md = !!t && looksLikeMarkdown(t);
   const go = fn => () => { box.hidePopover(); fn(); };
   const acts = [];
@@ -1751,18 +1785,39 @@ async function magicPaste() {
   }
   const kind = img ? 'A picture' : md ? 'Markdown' : t ? 'Text' : '';
   if (!acts.length) {
-    box.replaceChildren(el2('h2', { id: 'magicTitle' }, 'Nothing to paste'),
-      el2('p', { class: 'kind' }, 'Your clipboard is empty. Copy a picture, some Markdown or some text, then try again.'));
+    box.replaceChildren(closeX(() => box.hidePopover()), el2('h2', { id: 'magicTitle' }, 'Nothing to paste'),
+      el2('p', { class: 'kind' }, 'Your clipboard is empty. Copy a picture, some Markdown or some text, then try again.'),
+      autoToggle());
     return;
   }
   const preview = img ? Object.assign(el2('img', { alt: 'The picture on your clipboard' }), { src: img })
     : el2('div', { class: 'snippet' }, t.slice(0, 400));
   const buttons = acts.map(([label, fn], i) => { const b = el2('button', { type: 'button', class: i ? '' : 'primary' }, label); b.onclick = fn; return b; });
   box.replaceChildren(
-    el2('h2', { id: 'magicTitle' }, 'Magic paste'),
+    closeX(() => box.hidePopover()),
+    el2('h2', { id: 'magicTitle' }, auto ? 'You copied something' : 'Magic paste'),
     el2('p', { class: 'kind' }, `${kind} on your clipboard${img && t ? ' (and some text)' : ''}`),
-    preview, el2('div', { class: 'acts' }, ...buttons));
-  buttons[0].focus();
+    preview, el2('div', { class: 'acts' }, ...buttons), autoToggle());
+  if (!box.matches(':popover-open')) box.showPopover();
+  place();
+  if (!auto) buttons[0].focus();   // opened by itself, it doesn't take the keyboard from what you were doing
+}
+
+// The switch at the foot of the Magic paste card: whether it opens by itself when you copy something new.
+function autoToggle() {
+  const cb = el2('input', { type: 'checkbox' });
+  cb.checked = autoMagic;
+  cb.onchange = () => { autoMagic = cb.checked; store.set('autoMagic', autoMagic); if (autoMagic) clipBaseline(); };
+  return el2('label', { class: 'auto' }, cb, 'Open this when I copy something new');
+}
+
+// The × in the top-right corner of a card or dialog.
+const X_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+function closeX(close, label = 'Close (Esc)') {
+  const b = el2('button', { type: 'button', class: 'xclose', title: label, 'aria-label': label });
+  b.innerHTML = X_ICON;
+  b.onclick = close;
+  return b;
 }
 
 // Plain text as a text box, wrapped to about 60% of the page's width, in the middle of what's in view.
@@ -2989,7 +3044,15 @@ $('cropWhole').onclick = () => { if (cropping) { cropping.box = [0, 0, 1, 1]; dr
 for (const b of $('fills').children) { b.addEventListener('mousedown', e => e.preventDefault()); b.onclick = () => setFill(b.dataset.fill === '1'); }
 for (const b of $('widths').querySelectorAll('button')) b.onclick = () => setWidth(+b.dataset.w);
 $('addImage').onclick = () => addImage();
-$('magicBtn').onclick = magicPaste;
+$('magicBtn').onclick = () => magicPaste();
+for (const id of ['panel', 'keys', 'zoomPop']) $(id).prepend(closeX(() => $(id).hidePopover()));
+$('dlg').querySelector('form').prepend(closeX(() => $('dlg').close('cancel'), 'Close (Esc)'));
+{   // a click on the dimmed backdrop (pressed and released outside the dialog) closes it, as Cancel does
+  const d = $('dlg'), out = e => { const r = d.getBoundingClientRect(); return e.target === d && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom); };
+  let downOut = false;
+  d.addEventListener('pointerdown', e => { downOut = out(e); });
+  d.addEventListener('click', e => { if (downOut && out(e)) d.close('cancel'); downOut = false; });
+}
 $('ocrStop').onclick = () => { ocrStop = true; };
 $('tsmaller').onclick = () => setTextSize(-1);
 $('tbigger').onclick = () => setTextSize(1);
@@ -3172,7 +3235,7 @@ const KEYS = {
 };
 const CTRL_KEYS = {
   's': save, 'f': () => openFind(), 'o': () => docs.has('main') || pickFile(),   // with a PDF open, there's no opening another one here
-  'z': undo, 'y': redo, 'v': magicPaste,
+  'z': undo, 'y': redo, 'v': () => magicPaste(),
 };
 
 // Ctrl + / Ctrl − / Ctrl 0 (and Ctrl + the mouse wheel, or a pinch on a touchpad) zoom the pages, never the whole
