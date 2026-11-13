@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.0: back to the pointer after placing
+
+- **After placing anything** (a rectangle, ellipse, highlight, image, text box, note or image page), the pointer tool is back on and nothing is left selected, ready for the next thing. Click what you placed to move, resize or change it. (A new text box still opens for typing first; once you click away it's left unselected too.)
+- **Find closes when you click outside it**, as well as with Enter or Esc. Its matches stay lit for a moment, so you can see where they were. Clicks inside the find box (the search, options and results) keep it open; the Find button still opens and closes it.
+
 ## 2.14.0: fixes and hardening
 
 Fixed:

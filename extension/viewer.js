@@ -1353,6 +1353,7 @@ async function addNote(after = currentIndex(), given = null) {
   changePages(() => { entries.splice(after + 1, 0, ...added); });
   doc.pages.forEach((_, i) => textLayer(views.get(added[i].id)));
   views.get(added[0].id).div.scrollIntoView({ block: 'start' });
+  placed();
   say(added.length > 1 ? `Added a ${added.length}-page note after page ${after + 1}.` : `Added a note after page ${after + 1}.`,
     { action: { label: 'Undo', fn: undo } });
 }
@@ -1625,6 +1626,7 @@ async function imagePage(after, src) {
   changePages(() => { entries.splice(after + 1, 0, added); });
   views.get(added.id)?.div.scrollIntoView({ block: 'start' });
   showPage();
+  placed();
   say(`Added the image as a new page after page ${after + 1}.`, { action: { label: 'Undo', fn: undo } });
 }
 
@@ -1646,9 +1648,8 @@ async function placeImage(p, src) {
   commit(snapshot());
   const s = { page: p.id, type: 'image', x1: cx - W / 2, y1: cy - H / 2, x2: cx + W / 2, y2: cy + H / 2, img: key };
   shapes.push(s);
-  setTool('select');
-  select(s);
-  say('Image added. Drag it to move it, drag a corner to resize it, or press Del to remove it.');
+  placed();
+  say('Image added. Click it to move it, resize it or remove it.');
 }
 
 // What pdf.js doesn't report about annotations Inkfold saved, read from the file itself: each image's pixels, and
@@ -1777,9 +1778,8 @@ async function pasteTextBox(p, t) {
   commit(snapshot());
   const s = { page: p.id, type: 'text', x1: left, y1: top, x2: left, y2: top, text, size: textSize, color: colors.text };
   shapes.push(s);
-  setTool('select');
-  select(s);
-  say('Added the copied text as a text box. Drag it to move it; double-click it to edit.');
+  placed();
+  say('Added the copied text as a text box. Click it to move it; double-click it to edit.');
 }
 
 /* ---------- eraser ---------- */
@@ -1938,7 +1938,7 @@ function finishEdit() {
     if (sel === s) sel = null;
   }
   if (snapshot() !== before) commit(before);
-  if (fresh && text.trim()) select(s);   // a new box is done: selected, to move or resize
+  if (fresh && text.trim()) placed();   // a new box is done: left unselected, the pointer tool on
   syncControls();
   repaint();
 }
@@ -2051,12 +2051,14 @@ function up() {
   }
   if (!drag) return;
   const px = drag.p.vp.scale;
+  let made = false;
   if (drag.fresh && (sel.x2 - sel.x1) * px < 4 && (sel.y2 - sel.y1) * px < 4) {   // a click, not a drag
     shapes.pop();
     sel = null;
-  }
+  } else made = drag.fresh;
   if (snapshot() !== drag.before) commit(drag.before);
   drag = null;
+  if (made) return placed();
   syncControls();
   repaint();
 }
@@ -2115,6 +2117,7 @@ function highlightSelection() {
   if (!made.length) return;
   shapes.push(...made);
   commit(before);
+  if (tool === 'highlight') return placed();
   repaint();
 }
 
@@ -2246,6 +2249,15 @@ function setFill(f) {
 function pickTool(t) {
   if (t === tool && (t === 'rect' || t === 'ellipse')) return setFill(!(sel && sel.type === t ? !!sel.fill : fillShapes));
   setTool(t);
+}
+
+// After anything is placed (a shape, highlight, image, text box, note or page), nothing stays selected and the
+// pointer tool is back, ready for the next thing; click what was placed to move, resize or change it.
+function placed() {
+  if (sel) select(null);
+  if (tool !== 'select') setTool('select');
+  syncControls();
+  repaint();
 }
 
 function setTool(t) {
@@ -3050,6 +3062,11 @@ function menuKey(e) {   // arrow keys move through the menu, even if focus has w
 // The menu closes itself (a light-dismiss popover would close on the release of the very right-click that opened it).
 const closeMenu = () => $('menu').matches(':popover-open') && $('menu').hidePopover();
 addEventListener('pointerdown', e => { if (!$('menu').contains(e.target)) closeMenu(); }, true);
+// A click anywhere outside the find box closes it (its matches stay lit for a moment, to show where they were).
+addEventListener('pointerdown', e => {
+  if (!$('find').matches(':popover-open') || $('find').contains(e.target) || $('findBtn').contains(e.target) || $('dlg').open) return;
+  closeFind(true);
+}, true);
 addEventListener('scroll', closeMenu, { passive: true });
 addEventListener('resize', closeMenu);
 addEventListener('blur', closeMenu);
