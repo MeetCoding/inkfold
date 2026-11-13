@@ -2261,6 +2261,7 @@ function placed() {
 }
 
 function setTool(t) {
+  if (t !== 'eraser') erasingHeld = false;   // picked another tool while holding E: that tool stays
   finishEdit();
   if (eraseHover) { eraseHover = null; repaint(); }
   if (t === 'eraser' || (sel && t !== 'select' && t !== sel.type)) select(null);   // a new tool starts fresh
@@ -2854,17 +2855,66 @@ function setWidth(w) {
 
 function goPage(dir) { jumpTo(currentIndex() + dir); }
 
-// ← / →: glide to the previous or next page (or pair of pages, in two-page view). Quick presses add up.
-let pageTarget = -1, pageTargetAt = 0;
-function stepPage(dir) {
-  if (!pages.length) return;
-  const from = performance.now() - pageTargetAt < 700 ? pageTarget : currentIndex();
-  const k = clamp(from + dir * (spread ? 2 : 1), 0, pages.length - 1);
-  pageTarget = k;
-  pageTargetAt = performance.now();
-  pages[k].div.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  showPage(k);
+// ← / →: to the previous or next page (or pair of pages, in two-page view). A tap glides there; holding the key
+// keeps turning pages at a steady, quick pace (a little quicker the longer it's held), with the view following
+// smoothly the whole time; letting go settles on the page reached. Quick taps add up. The keyboard's own repeat
+// is ignored, so the pace is the same on every computer. The view follows a critically damped spring: it starts
+// moving at once, never overshoots, and keeps up with pages turning faster than it could jump.
+const FLIP_FIRST = 260, FLIP_EVERY = 150, FLIP_FASTEST = 80, FLIP_OMEGA = 0.026;   // ms, ms, ms, 1/ms
+const flip = { k: -1, dir: 0, held: false, next: 0, turns: 0, v: 0, t: 0, raf: 0 };
+const flipTop = k => pages[k].div.getBoundingClientRect().top + scrollY - 64;   // as scrollIntoView({ block: 'start' })
+
+function stepPage(dir, repeat = false) {
+  if (!pages.length || repeat) return;   // holding is paced below, not by the keyboard's repeat
+  glide = null;
+  if (!flip.raf) { flip.k = currentIndex(); flip.v = 0; }
+  flip.k = clamp(flip.k + dir * (spread ? 2 : 1), 0, pages.length - 1);
+  Object.assign(flip, { dir, held: true, turns: 0, next: performance.now() + FLIP_FIRST });
+  showPage(flip.k);
+  if (!flip.raf) { flip.t = performance.now(); flip.raf = requestAnimationFrame(flipTick); }
 }
+
+function flipTick(now) {
+  const dt = Math.min(34, Math.max(1, now - flip.t));
+  flip.t = now;
+  if (flip.held && now >= flip.next) {   // held: the next page
+    const k = clamp(flip.k + flip.dir * (spread ? 2 : 1), 0, pages.length - 1);
+    if (k !== flip.k) { flip.k = k; showPage(k); }
+    flip.turns++;
+    flip.next = now + Math.max(FLIP_FASTEST, FLIP_EVERY - flip.turns * 6);
+  }
+  const max = document.documentElement.scrollHeight - innerHeight;
+  const goal = clamp(flipTop(flip.k), 0, Math.max(0, max)), y = scrollY, d = goal - y;
+  if (!flip.held && Math.abs(d) < 0.6 && Math.abs(flip.v) < 0.03) {   // arrived
+    scrollTo({ top: goal, behavior: 'instant' });
+    return flipEnd();
+  }
+  flip.v += (FLIP_OMEGA * FLIP_OMEGA * d - 2 * FLIP_OMEGA * flip.v) * dt;
+  scrollTo({ top: y + flip.v * dt, behavior: 'instant' });
+  flip.raf = requestAnimationFrame(flipTick);
+}
+
+function flipEnd() {
+  cancelAnimationFrame(flip.raf);
+  Object.assign(flip, { raf: 0, held: false, v: 0, k: -1 });
+  showPage();
+}
+const flipStop = () => { flip.held = false; };
+
+// Holding E: the eraser, until E is let go (or the window loses focus). The toolbar's eraser button stays on.
+let erasingHeld = false;
+function eraserReleased() {
+  if (!erasingHeld) return;
+  erasingHeld = false;
+  if (tool === 'eraser') setTool('select');
+}
+addEventListener('keyup', e => { if (e.key.toLowerCase() === 'e') eraserReleased(); });
+addEventListener('blur', eraserReleased);
+addEventListener('keyup', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') flipStop(); });
+addEventListener('blur', flipStop);
+// Scrolling some other way takes over at once.
+addEventListener('wheel', () => flip.raf && flipEnd(), { passive: true });
+addEventListener('pointerdown', () => flip.raf && flipEnd(), true);
 
 // ↑ / ↓: a smooth glide instead of the browser's steps. Holding the key speeds it up gently;
 // letting go eases it to a stop. A quick tap moves about three lines.
@@ -3099,7 +3149,7 @@ addEventListener('resize', () => {
 
 // Every shortcut, in one place. Keys listed in the buttons' labels and in the ? sheet.
 const KEYS = {
-  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => pickTool('rect'), 'o': () => pickTool('ellipse'), 't': () => setTool('text'), 'e': () => setTool('eraser'), 'i': () => addImage(),
+  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => pickTool('rect'), 'o': () => pickTool('ellipse'), 't': () => setTool('text'), 'i': () => addImage(),
   '-': () => setTextSize(-1), '=': () => setTextSize(1), '+': () => setTextSize(1),
   'c': nextColor,
   '1': () => setWidth(1), '2': () => setWidth(2), '3': () => setWidth(4),
@@ -3177,8 +3227,13 @@ addEventListener('keydown', e => {
   if (typing) return;
   if (k === 'delete' && e.shiftKey) { e.preventDefault(); const ids = thisPage(); return ids && deletePages(ids); }
   if (k === 'f' && e.shiftKey) { e.preventDefault(); return toggleFull(); }
-  if (!e.shiftKey && (k === 'arrowdown' || k === 'arrowup')) { e.preventDefault(); return glideStart(k === 'arrowdown' ? 1 : -1); }
-  if (!e.shiftKey && (k === 'arrowleft' || k === 'arrowright')) { e.preventDefault(); return stepPage(k === 'arrowright' ? 1 : -1); }
+  if (!e.shiftKey && (k === 'arrowdown' || k === 'arrowup')) { e.preventDefault(); if (flip.raf) flipEnd(); return glideStart(k === 'arrowdown' ? 1 : -1); }
+  if (!e.shiftKey && (k === 'arrowleft' || k === 'arrowright')) { e.preventDefault(); return stepPage(k === 'arrowright' ? 1 : -1, e.repeat); }
+  if (k === 'e' && !e.shiftKey) {   // the eraser while E is held; back to the pointer when it's let go
+    e.preventDefault();
+    if (!e.repeat && tool !== 'eraser') { erasingHeld = true; setTool('eraser'); }
+    return;
+  }
   const fn = KEYS[e.key === '?' ? '?' : k];
   if (!fn) return;
   e.preventDefault();

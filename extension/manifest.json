@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Inkfold",
-  "version": "2.15.0",
+  "version": "2.16.0",
   "description": "Highlight, draw, add text with LaTeX and notes, OCR scans, and rotate, delete or split pages in any PDF. Private, nothing uploaded.",
   "icons": {
     "16": "icons/16.png",

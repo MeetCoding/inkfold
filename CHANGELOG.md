@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.16.0: smooth page turning, hold E to erase
+
+- **Holding ← or →** now turns pages smoothly at a quick, steady pace (a little faster the longer you hold), with the view gliding along the whole time, and settles on the page you reach when you let go. Before, the view hardly moved at first and then shot ahead, because each key repeat restarted the scroll. Quick taps still add up, one page each.
+- **Hold E for the eraser**: it's on while E is held, and you're back to the pointer when you let go. The toolbar's eraser button still keeps it on until you pick another tool.
+
 ## 2.15.0: back to the pointer after placing
 
 - **After placing anything** (a rectangle, ellipse, highlight, image, text box, note or image page), the pointer tool is back on and nothing is left selected, ready for the next thing. Click what you placed to move, resize or change it. (A new text box still opens for typing first; once you click away it's left unselected too.)

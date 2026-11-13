@@ -29,7 +29,7 @@
 - **Standard PDF annotations**: everything you add shows up in Acrobat, Preview, Chrome's own viewer and others, and stays editable when you reopen the file in Inkfold.
 - **Magic paste** (<kbd>Ctrl</kbd>+<kbd>V</kbd>, or the clipboard button): Inkfold looks at what you copied and offers the right thing: a picture goes onto the current page, Markdown becomes a note page after it, and plain text becomes a text box on it.
 - **Images** (<kbd>I</kbd>): upload a picture from your computer (or paste a copied one with Magic paste). It's placed on the page, scaled to fit, and can be moved, resized (keeping its proportions) and deleted like any other annotation.
-- **Eraser** (<kbd>E</kbd>): click or drag across highlights, shapes and text boxes to remove them.
+- **Eraser** (hold <kbd>E</kbd>): click or drag across highlights, shapes and text boxes to remove them; let go of <kbd>E</kbd> and you're back to the pointer. (Its toolbar button keeps it on until you pick another tool.)
 - **Undo and redo** for everything, including page changes.
 - **A keyboard shortcut for every action**, shown in brackets on every button. Press <kbd>?</kbd> for the full list.
 
@@ -68,7 +68,7 @@ Coming soon.
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, press <kbd>Del</kbd>. |
 | Magic paste | Copy something, then press <kbd>Ctrl</kbd>+<kbd>V</kbd> (or the clipboard button). A small card shows what's on the clipboard and offers, for a picture, **Add to page N** or **Add as a new page after page N**; for text, **Add as a note after page N** (Markdown) or **Add as a text box on page N** (plain text), with the other text option as an alternative. |
 | Add an image | <kbd>I</kbd> (or the picture button) and pick a file from your computer, then choose **Add to page N** (on the page, like a shape) or **Add as a new page after page N** (a page of its own, as wide as the PDF and as tall as the picture needs). (To paste a picture you copied, use **Magic paste**.) On the page, drag the image to move it and a corner to resize it (hold <kbd>Shift</kbd> to stretch it); <kbd>Del</kbd> or the eraser removes it. |
-| Erase | <kbd>E</kbd> for the eraser, then click a highlight, shape or text box to remove it, or drag across several at once. Whatever it would remove fades as you point at it; one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings back a whole stroke. |
+| Erase | Hold <kbd>E</kbd> for the eraser (or click its button to keep it on), then click a highlight, shape or text box to remove it, or drag across several at once. Whatever it would remove fades as you point at it; one <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings back a whole stroke. |
 | Add a note | Press <kbd>N</kbd> (or the note button, next to the picture button) and type the note. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> adds it after the page under your pointer. (For Markdown you copied, use **Magic paste**.) |
 | Change pages | Right-click a page to rotate it, delete it, move it, crop it or add a note after it. For several pages, press <kbd>P</kbd> (or the gear button) for the Pages and file panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Move a page | Right-click it and choose **Move page** (or press <kbd>M</kbd> over it). The page lifts and a small copy of it follows the pointer; the two pages either side of where it would go move apart, a blue "Page 2 goes here" marker sits in the gap, and the copy says where ("Page 2 → between 5 and 6"). Click to drop it there. The window scrolls when you near its top or bottom edge. Arrow keys move it too, <kbd>Enter</kbd> drops, <kbd>Esc</kbd> cancels, <kbd>Ctrl</kbd>+<kbd>Z</kbd> puts it back. |
@@ -88,9 +88,9 @@ Coming soon.
 | <kbd>H</kbd> | Highlighter | <kbd>Ctrl</kbd> <kbd>0</kbd> | 100% |
 | <kbd>R</kbd> | Rectangle | <kbd>W</kbd> / <kbd>F</kbd> | Fit width / fit page |
 | <kbd>O</kbd> | Ellipse | <kbd>D</kbd> | Two-page view |
-| <kbd>T</kbd> / <kbd>E</kbd> / <kbd>I</kbd> | Text box / eraser / add an image |
+| <kbd>T</kbd> / <kbd>E</kbd> (held) / <kbd>I</kbd> | Text box / eraser while held / add an image |
 | | | <kbd>↑</kbd> / <kbd>↓</kbd> | Smooth scrolling (hold to go faster) | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
-| <kbd>C</kbd> | Next colour | <kbd>→</kbd> / <kbd>←</kbd> (or <kbd>J</kbd> / <kbd>K</kbd>) | Next / previous page |
+| <kbd>C</kbd> | Next colour | <kbd>→</kbd> / <kbd>←</kbd> (or <kbd>J</kbd> / <kbd>K</kbd>) | Next / previous page; hold the arrow to keep turning pages |
 | | | <kbd>G</kbd> | Go to page number |
 | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |
 | <kbd>−</kbd> / <kbd>+</kbd> | Smaller / larger text | | |
