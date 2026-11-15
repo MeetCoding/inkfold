@@ -17,6 +17,7 @@ viewer.js          The viewer: loading, pages on screen, tools, panels, find, OC
 annotations.js     The annotation file format: write and read each kind (KINDS registry)          [Node-tested]
 save.js            The PDF that Save, Split and Merge write (page order, rotation, crop, OCR text)  [Node-tested]
 history.js         Undo and redo, kept as differences                                              [Node-tested]
+find.js            Find: the box, matching, lighting matches up (pure parts tested)                 [Node-tested]
 pages.js           Page ranges as typed ("2-4, 7, 10-end")                                         [Node-tested]
 geometry.js        Merging selected text's word boxes into lines, for highlights                   [Node-tested]
 paste.js           Is this Markdown?                                                               [Node-tested]
@@ -26,7 +27,7 @@ math.js            LaTeX -> vector paths (MathJax)
 compress.js        Smaller copies: re-encodes big images, compresses streams
 ```
 
-The six modules marked *Node-tested* have no browser dependencies. They start with `// @ts-check` and are
+The seven modules marked *Node-tested* have no browser dependencies. They start with `// @ts-check` and are
 type-checked by `npm run check`.
 
 ### State in the viewer
@@ -115,7 +116,7 @@ websites".
 `viewer.js` is still about 3,200 lines of shared module-level state. These are the next seams, in order of how
 cleanly they come apart:
 
-1. **Find** (search UI, matching, highlights): reads `pages` and `shapes`, writes only its own state.
+1. ~~**Find**~~: done (`find.js`).
 2. **OCR scheduling** (`autoOcr`, `pageImage`, `ocrItems`): `ocrItems` is pure and can move and be tested now.
 3. **Merge and move-pages UI:** self-contained panels.
 4. **Tools** (`down`/`move`/`up`, per tool): need a small shared state object (`tool`, `sel`, `drag`) first.

@@ -162,6 +162,7 @@ extension/          The extension itself (load this folder in Chrome)
   annotations.js    The annotation file format: how each kind is saved and read back
   save.js           Writes the PDF for Save, Split and Merge
   history.js        Undo and redo
+  find.js           Find (Ctrl+F)
   pages.js, geometry.js, paste.js   Small pure helpers (page ranges, highlight lines, Markdown detection)
   notes.js          Markdown -> PDF pages
   math.js           LaTeX -> vector paths (via MathJax)

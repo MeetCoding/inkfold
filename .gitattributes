@@ -1,0 +1,11 @@
+# Text files are stored with LF line ends and checked out as such everywhere (Windows too), so the extension and the
+# zips built from it are byte-for-byte the same on every machine.
+* text=auto eol=lf
+*.onnx binary
+*.wasm binary
+*.bcmap binary
+*.pfb binary
+*.ttf binary
+*.png binary
+*.mp4 binary
+*.zip binary
