@@ -1155,10 +1155,17 @@ async function joinPages(k) {
   say(`Joined pages ${k + 1} and ${k + 2} into one long page.`, { action: { label: 'Undo', fn: undo }, long: true });
 }
 
-// The seam between two pages: with the pointer in the gap between them (one above the other), a small button there
-// joins them. (The page menu has it too: Join with the next page.)
-let seamK = -1, seamTimer = 0;
-function hideSeam() { clearTimeout(seamTimer); seamK = -1; $('seam').hidden = true; }
+// The seam between two pages: when the pointer rests in the gap between them (one above the other) for a moment,
+// a small button there joins them. Just passing through doesn't bring it up. (The page menu has it too: Join with
+// the next page.)
+const SEAM_DWELL = 1000;   // ms the pointer has to rest in the gap
+let seamK = -1, seamWant = -1, seamTimer = 0, seamWait = 0;
+function hideSeam() {
+  clearTimeout(seamTimer); clearTimeout(seamWait);
+  seamTimer = seamWait = 0;
+  seamK = seamWant = -1;
+  $('seam').hidden = true;
+}
 function seamUnder(x, y) {
   if (spread || moving || cropping || drag || editing || pages.length < 2) return -1;
   for (let k = 0; k < pages.length - 1; k++) {
@@ -1168,22 +1175,32 @@ function seamUnder(x, y) {
   }
   return -1;
 }
-addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch' || e.buttons) return;
-  if ($('seam').contains(e.target)) { clearTimeout(seamTimer); return; }
-  const k = e.target === $('pages') || e.target.closest?.('.page') ? seamUnder(e.clientX, e.clientY) : -1;
-  if (k < 0) { if (seamK >= 0 && !seamTimer) seamTimer = setTimeout(() => { seamTimer = 0; hideSeam(); }, 300); return; }
-  clearTimeout(seamTimer);
-  seamTimer = 0;
-  if (k === seamK) return;
+function showSeam(k) {
+  seamWant = -1;
+  if (!pages[k + 1]) return;
   seamK = k;
   const a = pages[k].div.getBoundingClientRect(), b = pages[k + 1].div.getBoundingClientRect(), s = $('seam');
   s.title = `Join pages ${k + 1} and ${k + 2} into one long page`;
   s.style.left = (Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2 + 'px';
   s.style.top = (a.bottom + b.top) / 2 + 'px';
   s.hidden = false;
+}
+addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch' || e.buttons) return;
+  if ($('seam').contains(e.target)) { clearTimeout(seamTimer); seamTimer = 0; return; }
+  const k = e.target === $('pages') || e.target.closest?.('.page') ? seamUnder(e.clientX, e.clientY) : -1;
+  if (k !== seamWant) { clearTimeout(seamWait); seamWait = 0; seamWant = -1; }   // moved off (or to another gap): start over
+  if (k < 0) {
+    if (seamK >= 0 && !seamTimer) seamTimer = setTimeout(hideSeam, 300);
+    return;
+  }
+  clearTimeout(seamTimer);
+  seamTimer = 0;
+  if (k === seamK || k === seamWant) return;
+  seamWant = k;
+  seamWait = setTimeout(() => showSeam(k), SEAM_DWELL);
 }, { passive: true });
-addEventListener('scroll', () => { if (seamK >= 0) hideSeam(); }, { passive: true });
+addEventListener('scroll', () => { if (seamK >= 0 || seamWant >= 0) hideSeam(); }, { passive: true });
 $('seam').onclick = () => joinPages(seamK);
 
 function rotatePages(ids, delta) {
@@ -2752,9 +2769,10 @@ function visibleArea() {
   return r.top < innerHeight / 2 ? { top: Math.max(0, r.bottom), bottom: innerHeight } : { top: 0, bottom: Math.min(innerHeight, r.top) };
 }
 const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', cut: 'Cutter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
-// The pill, while the toolbar is hidden: the tool's icon, then what its keys pick (each with its key): the colours
-// (Shift+1…5), the line thickness (1, 2, 3) and outline or filled (R / O again) for shapes, the size (− +) for
-// text; then the page. The colours and thicknesses can be clicked too.
+// The pill, while the toolbar is hidden: the tool's icon, then what its keys pick, each marked with its key: the
+// colours (Shift+1…5, marked ⇧1…⇧5 so they aren't taken for the thickness keys), the line thickness (1, 2, 3) and
+// outline or filled (R / O again) for shapes, the size (− +) for text; then the page. The colours, thicknesses and
+// fill can be clicked too.
 function syncStatus() {
   if (!barless) return;
   const b = document.querySelector(`button[data-tool="${tool}"]`), t = $('status').querySelector('.tool');
@@ -2773,7 +2791,7 @@ function statusOptions() {
     return b;
   };
   const sets = [el2('span', { class: 'set' }, ...palette().map(([n, c], i) => {
-    const b = opt(`${n} (Shift+${i + 1})`, c === cur, String(i + 1), () => pickColor(c), el2('span', { class: 'dot' }));
+    const b = opt(`${n} (Shift+${i + 1})`, c === cur, '⇧' + (i + 1), () => pickColor(c), el2('span', { class: 'dot' }));
     b.firstChild.style.background = c;
     return b;
   }))];

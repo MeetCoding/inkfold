@@ -35,9 +35,17 @@ test('join pages 1 and 2 at their seam; the rectangle on page 2 comes along', as
     const [a, b] = [...document.querySelectorAll('.page')].map(p => p.getBoundingClientRect());
     return { x: a.left + a.width / 2 + 120, y: (a.bottom + b.top) / 2 };
   });
+  // Passing across the gap, from page 1 onto page 2, doesn't bring the button up.
+  await page.mouse.move(gap.x, gap.y - 60);
+  await page.mouse.move(gap.x, gap.y + 60, { steps: 6 });
+  await pause(1300);
+  assert.equal(await page.$eval('#seam', n => n.hidden), true, 'passing through: no button');
   await page.mouse.move(gap.x, gap.y - 30);
   await page.mouse.move(gap.x, gap.y, { steps: 4 });
-  await page.waitForSelector('#seam:not([hidden])');
+  // Just passing through doesn't bring the button up; resting there for a second does.
+  await pause(500);
+  assert.equal(await page.$eval('#seam', n => n.hidden), true, 'not yet');
+  await page.waitForSelector('#seam:not([hidden])', { timeout: 2000 });
   await page.click('#seam');
   await page.waitForFunction(() => document.querySelectorAll('.page').length === 2);
   await pause(300);

@@ -38,10 +38,10 @@ test('the pill, with the toolbar hidden', async () => {
   }));
   assert.deepEqual(await pill(), { text: '', icon: true, keys: '' }, 'pointer: just its icon');
   await page.keyboard.press('r');
-  assert.deepEqual((await pill()).keys, '1 2 3 4 5 1 2 3 R', 'colours, thickness, fill');
+  assert.deepEqual((await pill()).keys, '⇧1 ⇧2 ⇧3 ⇧4 ⇧5 1 2 3 R', 'colours (with Shift), thickness, fill');
   await page.keyboard.press('h');
-  assert.deepEqual((await pill()).keys, '1 2 3 4 5', 'colours only');
+  assert.deepEqual((await pill()).keys, '⇧1 ⇧2 ⇧3 ⇧4 ⇧5', 'colours only');
   await page.click('#status .opt:nth-child(3)');   // the third colour, by clicking it
-  assert.equal(await page.$eval('#status .opt.on small', n => n.textContent), '3');
+  assert.equal(await page.$eval('#status .opt.on small', n => n.textContent), '⇧3');
   await page.keyboard.down('Shift'); await page.keyboard.press('h'); await page.keyboard.up('Shift');
 });
