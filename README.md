@@ -63,7 +63,7 @@ Coming soon.
 | Open a PDF | Open any PDF link in Chrome, click the Inkfold toolbar icon on a PDF tab, or, on Inkfold's start page, drop a file or press <kbd>Ctrl</kbd>+<kbd>O</kbd>. (Once a PDF is open, Open is hidden: open another PDF in its own tab.) |
 | Highlight | Press <kbd>H</kbd> and drag across text. Or select text first, then press <kbd>H</kbd>. |
 | After placing | Once something is placed (a shape, highlight, image, text box or note), the pointer tool is back and nothing is selected. Click what you placed to move, resize or change it. |
-| Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Outlined or filled: pick in the toolbar, next to the thickness, or press <kbd>R</kbd> / <kbd>O</kbd> again (the tool's button fills in to show it). Pick one of five colours in the toolbar (<kbd>C</kbd> for the next), thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
+| Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Outlined or filled: pick in the toolbar, next to the thickness, or press <kbd>R</kbd> / <kbd>O</kbd> again (the tool's button fills in to show it). Pick one of five colours in the toolbar (<kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>5</kbd> picks one, <kbd>C</kbd> the next), thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
 | Write | <kbd>T</kbd>, then click where the text should go and type. <kbd>Enter</kbd> starts a new line; <kbd>Esc</kbd> or a click outside finishes. `$…$` is LaTeX. Text size with <kbd>−</kbd> / <kbd>+</kbd>. To change a box later, double-click it (or click it with <kbd>T</kbd>); drag it to move it. |
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, press <kbd>Del</kbd>. |
 | Magic paste | Copy something, then press <kbd>Ctrl</kbd>+<kbd>V</kbd> (or the clipboard button). Copy something somewhere else (another tab or app, or a panel beside the PDF such as Gemini's) and the card opens by itself, while the PDF is in view or when you come back to it (once for each new thing; things you copy in Inkfold don't count; there's a switch on the card to turn this off). A small card shows what's on the clipboard and offers, for a picture, **Add to page N** or **Add as a new page after page N**; for text, **Add as a note after page N** (Markdown) or **Add as a text box on page N** (plain text), with the other text option as an alternative. |
@@ -91,7 +91,7 @@ Coming soon.
 | <kbd>T</kbd> / <kbd>E</kbd> (held) / <kbd>I</kbd> | Text box / eraser while held / add an image |
 | | | <kbd>↑</kbd> / <kbd>↓</kbd> | Smooth scrolling (hold to go faster) | <kbd>Shift</kbd> <kbd>F</kbd> | Full screen (again, or <kbd>Esc</kbd>, to leave) |
 | <kbd>C</kbd> | Next colour | <kbd>→</kbd> / <kbd>←</kbd> (or <kbd>J</kbd> / <kbd>K</kbd>) | Next / previous page; hold the arrow to keep turning pages |
-| | | <kbd>G</kbd> | Go to page number |
+| <kbd>Shift</kbd> <kbd>1</kbd>–<kbd>5</kbd> | Pick colour 1–5 (left to right, as in the toolbar) | <kbd>G</kbd> | Go to page number |
 | <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Thin, medium, thick | | |
 | <kbd>−</kbd> / <kbd>+</kbd> | Smaller / larger text | | |
 | **Editing** | | **Pages** | |

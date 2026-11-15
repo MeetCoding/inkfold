@@ -1972,8 +1972,8 @@ function syncControls() {   // the colour and thickness boxes show the selection
   const set = pal.map(([, c]) => c).join();
   if (box.dataset.set !== set) {   // rebuild when switching between highlighter, shape and text colours
     box.dataset.set = set;
-    box.replaceChildren(...pal.map(([n, c]) => {
-      const b = el2('button', { type: 'button', role: 'radio', 'data-c': c, title: `${n} (C for the next colour)`, 'aria-label': n }, el2('span', { class: 'dot' }));
+    box.replaceChildren(...pal.map(([n, c], i) => {
+      const b = el2('button', { type: 'button', role: 'radio', 'data-c': c, title: `${n} (Shift+${i + 1}; C for the next colour)`, 'aria-label': n, 'aria-keyshortcuts': `Shift+${i + 1}` }, el2('span', { class: 'dot' }));
       b.firstChild.style.background = c;
       b.addEventListener('mousedown', e => e.preventDefault());   // keeps a text box being typed in open
       b.onclick = () => pickColor(c);
@@ -2956,6 +2956,16 @@ addEventListener('keydown', e => {
   if (k === 'e' && !e.shiftKey) {   // the eraser while E is held; back to the pointer when it's let go
     e.preventDefault();
     if (!e.repeat && tool !== 'eraser') { erasingHeld = true; setTool('eraser'); }
+    return;
+  }
+  // Shift+1…5: the colours in the toolbar, left to right (matched by the physical key, so any keyboard layout works).
+  const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+  if (e.shiftKey && digit) {
+    const c = palette()[+digit[1] - 1];
+    if (!c) return;
+    e.preventDefault();
+    pickColor(c[1]);
+    if ($('styleBox').hidden) say(`${{ shape: 'Shapes', highlight: 'Highlights', text: 'Text' }[kind()]}: ${c[0].toLowerCase()}`);   // (no palette on show)
     return;
   }
   const fn = KEYS[e.key === '?' ? '?' : k];
