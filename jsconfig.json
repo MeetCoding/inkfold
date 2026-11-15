@@ -9,7 +9,8 @@
     "target": "es2023",
     "module": "es2022",
     "moduleResolution": "bundler",
-    "lib": ["es2023", "dom"],
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": [],
     "strict": true,
     "noImplicitAny": false,
     "skipLibCheck": true
@@ -20,6 +21,7 @@
     "extension/history.js",
     "extension/pages.js",
     "extension/geometry.js",
-    "extension/paste.js"
+    "extension/paste.js",
+    "extension/find.js"
   ]
 }

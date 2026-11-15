@@ -46,6 +46,7 @@
         "geometry.js",
         "paste.js",
         "history.js",
+        "find.js",
         "reader.html",
         "reader.js",
         "icons/*",

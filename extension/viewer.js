@@ -7,6 +7,7 @@ import { parseRanges } from './pages.js';
 import { mergeLines } from './geometry.js';
 import { looksLikeMarkdown } from './paste.js';
 import { createHistory } from './history.js';
+import { createFind, joinItems } from './find.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -110,7 +111,7 @@ async function openPdf(buf, fileName, from = {}) {
   endCrop();   // whatever was going on with the old PDF ends
   if (moving) endMove(false);
   finishEdit();
-  closeFind();
+  find.close();
   let onPaint;
   painted = new Promise(r => (onPaint = r));
   painted.done = () => { painted.isDone = true; onPaint(); };
@@ -287,7 +288,7 @@ function layoutPages() {   // match the DOM to `entries`
   });
   $('count').textContent = `${pages.length} page${pages.length === 1 ? '' : 's'}`;
   showPage();
-  findStale();
+  find.stale();
 }
 
 function size(p) {
@@ -356,7 +357,7 @@ function textLayer(p) {   // invisible, selectable text laid over the canvas
     const end = document.createElement('div');   // lets a drag that starts in the margin still select text
     end.className = 'endOfContent';
     div.append(end);
-    markPage(p);
+    find.pageReady(p);   // its matches, if Find is open
   })();
 }
 
@@ -492,7 +493,7 @@ function rebuildText(p) {   // swap a page's text layer for a fresh one (after i
   p.text = null;
   p.textReady = null;
   textLayer(p);
-  findStale();   // its words can now be found (or found again, after a crop)
+  find.stale();   // its words can now be found (or found again, after a crop)
 }
 
 /* ---------- offering to compress ---------- */
@@ -902,218 +903,18 @@ addEventListener('scroll', () => moving && placeGhost(), { passive: true });
 
 /* ---------- find ---------- */
 
-// Ctrl+F lists every page that mentions the text, once, with how many times and a snippet. Moving through the
-// list (Tab, ↓) scrolls to each page in turn; the matches are lit up on the pages with the CSS Highlight API,
-// so the page's own text is never touched.
 const findCache = new WeakMap();   // pdf.js page -> its text as one string
-let findRun = 0, findHits = [], findOn = -1, findTimer = 0;
-const findMarks = new Map();       // page view -> Range[] of its matches
-
-function findPattern() {
-  const q = $('findQ').value.trim();
-  if (!q) return null;
-  let src = q.split(/\s+/).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
-  if ($('findWord').checked) src = `(?<![\\p{L}\\p{N}_])${src}(?![\\p{L}\\p{N}_])`;
-  try { return new RegExp(src, $('findCase').checked ? 'gu' : 'giu'); } catch { return null; }
-}
-
-const joinItems = items => items.map(it => (it.str ?? '') + (it.hasEOL ? '\n' : '')).join('');
-async function pageText(p) {
-  let t;
-  if (p.e.doc === 'main' && ocrText.has(p.e.i)) t = joinItems(ocrText.get(p.e.i));
-  else if ((t = findCache.get(p.page)) === undefined) {
-    const tc = await p.page.getTextContent().catch(() => ({ items: [] }));
-    findCache.set(p.page, t = joinItems(tc.items));
-  }
-  const boxes = shapes.filter(s => s.page === p.id && s.type === 'text').map(s => s.text);   // your own text boxes too
-  return (boxes.length ? t + '\n' + boxes.join('\n') : t).replace(/[\s­]+/g, ' ');
-}
-
-function openFind() {
-  if (!docs.has('main')) return;
-  const f = $('find');
-  if (!f.matches(':popover-open')) {
-    document.querySelectorAll('.pop:popover-open, #zoomPop:popover-open').forEach(x => x.hidePopover());
-    f.style.top = header.getBoundingClientRect().bottom + 6 + 'px';
-    clearTimeout(findFade);
-    f.showPopover();
-    $('findBtn').setAttribute('aria-pressed', 'true');
-    const picked = String(getSelection()).trim();   // selected text becomes the search
-    if (picked && picked.length < 80 && !picked.includes('\n')) $('findQ').value = picked;
-    if ($('findQ').value) runFind();
-  }
-  $('findQ').focus();
-  $('findQ').select();
-}
-
-let findFade = 0;
-function closeFind(linger = false) {   // linger: leave the matches lit for a moment, to show where they are
-  $('find').hidePopover();
-  $('findBtn').setAttribute('aria-pressed', 'false');
-  findRun++;
-  clearTimeout(findFade);
-  const clear = () => { findMarks.clear(); CSS.highlights?.delete('find'); CSS.highlights?.delete('find-on'); };
-  if (linger) findFade = setTimeout(() => { if (!$('find').matches(':popover-open')) clear(); }, 2500);
-  else clear();
-}
-
-function findStale() {   // pages or their text changed: search again, quietly
-  if (!$('find').matches(':popover-open') || !$('findQ').value.trim()) return;
-  clearTimeout(findTimer);
-  findTimer = setTimeout(() => runFind(true), 250);
-}
-
-async function runFind(keepFocus = false) {
-  const run = ++findRun, re = findPattern(), list = $('findList'), sum = $('findSum');
-  const onPage = findOn >= 0 ? findHits[findOn]?.p : null;
-  findHits = []; findOn = -1;
-  findMarks.clear();
-  list.replaceChildren();
-  $('find').querySelector('.empty')?.remove();
-  paintMarks();
-  if (!re) { sum.textContent = ''; return; }
-  let total = 0;
-  sum.textContent = 'Searching…';
-  for (const [k, p] of pages.entries()) {
-    const text = await pageText(p);
-    if (run !== findRun) return;
-    re.lastIndex = 0;
-    let n = 0, first = null, m;
-    while ((m = re.exec(text))) { if (!first) first = m; n++; if (!m[0].length) re.lastIndex++; }
-    if (n) {
-      total += n;
-      const hit = { p, k, n };
-      findHits.push(hit);
-      list.append(findRow(hit, text, first));
-      sum.innerHTML = '';
-      sum.append(...summary(total, findHits.length, k + 1 < pages.length));
-    }
-    if (k % 8 === 7) await new Promise(r => setTimeout(r));   // stay responsive on long PDFs
-  }
-  if (run !== findRun) return;
-  sum.replaceChildren(...summary(total, findHits.length, false));
-  if (!findHits.length) {
-    const scanning = ocrState.phase === 'running';
-    list.after(el2('p', { class: 'empty' }, scanning ? 'No matches yet. Inkfold is still reading the scanned pages; they’ll be searched as they’re done.' : 'No matches in this PDF.'));
-  }
-  for (const p of pages) if (p.textReady) p.textReady.then(() => markPage(p));
-  const back = onPage && findHits.findIndex(h => h.p === onPage);
-  if (keepFocus && back >= 0) setFindOn(back, false);
-}
-
-function summary(total, nPages, more) {
-  if (!total) return [document.createTextNode(more ? 'Searching…' : 'No matches')];
-  const b = s => el2('b', {}, String(s));
-  return [b(total), ` match${total === 1 ? '' : 'es'} on `, b(nPages), ` page${nPages === 1 ? '' : 's'}${more ? '…' : ''}`];
-}
-
-function findRow(hit, text, m) {
-  const a = Math.max(0, m.index - 36), z = Math.min(text.length, m.index + m[0].length + 70);
-  const snip = el2('span', { class: 'snip' },
-    (a ? '…' : '') + text.slice(a, m.index).trimStart(), el2('mark', {}, m[0]), text.slice(m.index + m[0].length, z) + (z < text.length ? '…' : ''));
-  const isNote = hit.p.e.doc !== 'main';
-  const btn = el2('button', { type: 'button', title: `Page ${hit.k + 1}: ${hit.n} match${hit.n === 1 ? '' : 'es'}` },
-    el2('span', { class: 'pg' }, el2('small', {}, isNote ? 'Note' : 'Page'), el2('span', {}, String(hit.k + 1))),
-    snip,
-    el2('span', { class: 'n', 'aria-label': `${hit.n} match${hit.n === 1 ? '' : 'es'}` }, '×' + hit.n));
-  btn.addEventListener('focus', () => setFindOn(findHits.indexOf(hit)));
-  btn.addEventListener('click', async () => { await setFindOn(findHits.indexOf(hit)); closeFind(true); });
-  return el2('li', {}, btn);
-}
-
-// Scroll to a result's page (its first match, once the page's text is there) and light its matches up brighter.
-async function setFindOn(i, scroll = true) {
-  const hit = findHits[i];
-  if (!hit) return;
-  findOn = i;
-  $('findList').querySelectorAll('button.on').forEach(b => b.classList.remove('on'));
-  const btn = $('findList').children[i]?.firstChild;
-  btn?.classList.add('on');
-  btn?.scrollIntoView({ block: 'nearest' });
-  if (!scroll) return paintMarks();
-  const p = hit.p;
-  p.div.scrollIntoView({ block: 'start' });
-  scrollBy(0, -GAP);
-  showPage(hit.k);
-  await textLayer(p);
-  if (findOn !== i) return;
-  markPage(p);
-  const r = findMarks.get(p)?.[0]?.getBoundingClientRect();
-  const top = header.getBoundingClientRect().bottom;
-  if (r && (r.bottom > innerHeight - 40 || r.top < top)) scrollBy({ top: r.top - top - innerHeight * 0.25, behavior: 'smooth' });
-}
-
-// The ranges of the matches in a page's text layer.
-function markPage(p) {
-  if (!$('find').matches(':popover-open') || !findHits.some(h => h.p === p)) {
-    if (findMarks.delete(p)) paintMarks();
-    return;
-  }
-  const re = findPattern(), layer = p.div.querySelector('.textLayer');
-  if (!re || !layer) return;
-  const nodes = [], walk = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-  let str = '';
-  for (let n; (n = walk.nextNode());) {
-    if (n.nodeType === 3) { nodes.push([n, str.length]); str += n.data; }
-    else if (n.tagName === 'BR') str += '\n';   // line ends, so words on two lines don't run together
-  }
-  if (!nodes.length) return;
-  const at = off => {   // string offset -> [text node, offset in it]
-    let lo = 0, hi = nodes.length - 1;
-    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (nodes[mid][1] <= off) lo = mid; else hi = mid - 1; }
-    return [nodes[lo][0], off - nodes[lo][1]];
-  };
-  const ranges = [];
-  for (let m; (m = re.exec(str));) {
-    if (!m[0].length) { re.lastIndex++; continue; }
-    const r = new Range();
-    const [a, ao] = at(m.index), [b, bo] = at(m.index + m[0].length - 1);
-    r.setStart(a, ao);
-    r.setEnd(b, bo + 1);
-    ranges.push(r);
-  }
-  findMarks.set(p, ranges);
-  paintMarks();
-}
-
-function paintMarks() {
-  if (!CSS.highlights || typeof Highlight === 'undefined') return;
-  const on = findHits[findOn]?.p, all = [], cur = [];
-  for (const [p, rs] of findMarks) for (const r of rs) (p === on ? cur : all).push(r);
-  const hl = rs => { const h = new Highlight(); for (const r of rs) h.add(r); return h; };   // (any number of matches)
-  CSS.highlights.set('find', hl(all));
-  CSS.highlights.set('find-on', hl(cur));
-}
-
-$('findBtn').onclick = () => ($('find').matches(':popover-open') ? closeFind() : openFind());
-$('findClose').onclick = () => closeFind();
-$('findQ').addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(runFind, 140); });
-$('findCase').onchange = $('findWord').onchange = () => { runFind(); $('findQ').focus(); };
-$('find').addEventListener('keydown', e => {
-  const rows = [...$('findList').querySelectorAll('li > button')];
-  const i = rows.indexOf(document.activeElement), mod = e.ctrlKey || e.metaKey;
-  const go = j => { e.preventDefault(); rows[(j + rows.length) % rows.length]?.focus(); };
-  if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); e.stopPropagation(); $('findQ').focus(); $('findQ').select(); return; }
-  if (mod) return;   // Ctrl+Z, Ctrl+S… still work
-  e.stopPropagation();   // letters typed here aren't tool shortcuts
-  if (e.key === 'Escape') { e.preventDefault(); return closeFind(); }
-  if (e.target === $('findQ') && rows.length) {
-    if ((e.key === 'Tab' && !e.shiftKey) || e.key === 'ArrowDown') return go(0);   // straight to the first page found
-    if (e.key === 'Enter') { e.preventDefault(); return rows[0].click(); }
-  }
-  if (i >= 0) {
-    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) return i === rows.length - 1 && e.key === 'Tab' ? (e.preventDefault(), $('findQ').focus()) : go(i + 1);
-    if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) return i === 0 ? (e.preventDefault(), $('findQ').focus()) : go(i - 1);
-    if (e.key === 'Home') return go(0);
-    if (e.key === 'End') return go(rows.length - 1);
-  }
-  // Anywhere else, Tab and Shift+Tab go round the find box's own controls; focus never leaves it while it's open.
-  if (e.key === 'Tab') {
-    const ring = [$('findQ'), $('findClose'), $('findCase'), $('findWord'), ...rows];
-    const k = ring.indexOf(document.activeElement);
-    e.preventDefault();
-    ring[((k < 0 ? 0 : k + (e.shiftKey ? -1 : 1)) + ring.length) % ring.length].focus();
-  }
+const find = createFind({
+  pages: () => pages,
+  async textOf(p) {
+    if (p.e.doc === 'main' && ocrText.has(p.e.i)) return joinItems(ocrText.get(p.e.i));
+    let t = findCache.get(p.page);
+    if (t === undefined) findCache.set(p.page, t = joinItems((await p.page.getTextContent().catch(() => ({ items: [] }))).items));
+    return t;
+  },
+  boxesOn: p => shapes.filter(s => s.page === p.id && s.type === 'text').map(s => s.text),
+  textLayer, showPage, visibleArea, el: el2,
+  reading: () => ocrState.phase === 'running',
 });
 
 /* ---------- zoom and layout ---------- */
@@ -2801,6 +2602,12 @@ function showPage(k = currentIndex()) {
 // current tool and page meanwhile. Remembered.
 let barless = store.get('barless', false);
 const barHeight = () => (barless ? 0 : header.offsetHeight);
+// The part of the window the pages can be seen in: all of it but the toolbar, wherever it is (or none of it hidden).
+function visibleArea() {
+  const r = header.getBoundingClientRect();
+  if (r.bottom <= 0 || r.top >= innerHeight) return { top: 0, bottom: innerHeight };
+  return r.top < innerHeight / 2 ? { top: Math.max(0, r.bottom), bottom: innerHeight } : { top: 0, bottom: Math.min(innerHeight, r.top) };
+}
 const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
 function syncStatus() {
   if (!barless) return;
@@ -3017,7 +2824,7 @@ addEventListener('pointerdown', e => { if (!$('menu').contains(e.target)) closeM
 // A click anywhere outside the find box closes it (its matches stay lit for a moment, to show where they were).
 addEventListener('pointerdown', e => {
   if (!$('find').matches(':popover-open') || $('find').contains(e.target) || $('findBtn').contains(e.target) || $('dlg').open) return;
-  closeFind(true);
+  find.close(true);
 }, true);
 addEventListener('scroll', closeMenu, { passive: true });
 addEventListener('resize', closeMenu);
@@ -3060,7 +2867,7 @@ const KEYS = {
   'n': () => addNote(targetIndex() >= 0 ? targetIndex() : undefined),
   'p': () => togglePanel('panel', 'range'),
   'm': () => pages.length && startMove(pages[targetIndex()]),
-  '/': () => openFind(),
+  '/': () => find.open(),
   '?': () => togglePanel('keys'),
   '[': () => thisPage() && rotatePages(thisPage(), -90), ']': () => thisPage() && rotatePages(thisPage(), 90),
   'j': () => goPage(1), 'k': () => goPage(-1), 'g': () => { $('pageNum').focus(); $('pageNum').select(); },
@@ -3073,7 +2880,7 @@ const KEYS = {
   },
 };
 const CTRL_KEYS = {
-  's': save, 'f': () => openFind(), 'o': () => docs.has('main') || pickFile(),   // with a PDF open, there's no opening another one here
+  's': save, 'f': () => find.open(), 'o': () => docs.has('main') || pickFile(),   // with a PDF open, there's no opening another one here
   'z': undo, 'y': redo, 'v': () => magicPaste(),
 };
 
