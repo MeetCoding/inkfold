@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
-export const EXTENSION = resolve(import.meta.dirname, '../../extension');
+// INKFOLD_EXTENSION: test another copy, such as an unzipped release, instead of extension/.
+export const EXTENSION = resolve(process.env.INKFOLD_EXTENSION || resolve(import.meta.dirname, '../../extension'));
 
 // Serves PDFs from memory: files['/a.pdf'] = bytes.
 export async function serve(files = {}) {
