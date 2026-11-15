@@ -1,10 +1,13 @@
 // Tiny pictures for the tests: a PNG made here, and a 4×3 JPEG.
 import { deflateSync, crc32 } from 'node:zlib';
 
-// A w×h PNG, every pixel [r, g, b, a].
-export function png(w, h, [r, g, b, a]) {
+// A w×h PNG: every pixel [r, g, b, a], or the RGBA pixels given.
+export function png(w, h, fill) {
   const raw = Buffer.alloc((w * 4 + 1) * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw.set([r, g, b, a], y * (w * 4 + 1) + 1 + x * 4);
+  for (let y = 0; y < h; y++) {
+    if (fill.length === w * h * 4) raw.set(fill.subarray(y * w * 4, (y + 1) * w * 4), y * (w * 4 + 1) + 1);
+    else for (let x = 0; x < w; x++) raw.set(fill, y * (w * 4 + 1) + 1 + x * 4);
+  }
   const chunk = (type, data) => {
     const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
     const td = Buffer.concat([Buffer.from(type), data]);
