@@ -236,6 +236,14 @@ const io = new IntersectionObserver(list => {
 
 const rotationOf = p => (p.page.rotate + p.e.rot) % 360;
 const shown = p => p.e.crop ?? p.page.view;   // the part of the page on screen, in PDF points
+// The part of a page that's in view right now (inside the window, clear of the toolbar), in PDF points.
+function visiblePart(p) {
+  const r = p.div.getBoundingClientRect(), view = visibleArea();
+  const l = Math.max(r.left, 0), t = Math.max(r.top, view.top), rr = Math.min(r.right, document.documentElement.clientWidth), b = Math.min(r.bottom, view.bottom);
+  if (rr - l < 8 || b - t < 8) return shown(p);   // (barely in view: the whole page)
+  const [ax, ay] = p.vp.convertToPdfPoint(l - r.left, t - r.top), [bx, by] = p.vp.convertToPdfPoint(rr - r.left, b - r.top);
+  return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)];
+}
 
 // A page's viewport, showing only its crop box (e.crop: [x1, y1, x2, y2] in PDF points) when it has one.
 // While the page is being cropped, it shows whole.
@@ -1402,15 +1410,14 @@ async function placeImage(p, src) {
   try { im = await prepImage(src); } catch { return say('That file couldn’t be read as a picture.'); }
   const key = 'img' + nextImg++;
   imgs.set(key, im);
+  // It goes in the middle of the part of the page that's on screen, small enough that all of it is in view, with a
+  // margin: no scrolling or zooming out to see its corners (and never bigger than 80% of the page, or its own size).
+  const [vx0, vy0, vx1, vy1] = visiblePart(p), VW = vx1 - vx0, VH = vy1 - vy0;
   const [x0, y0, x1, y1] = shown(p), PW = x1 - x0, PH = y1 - y0;
-  const k = Math.min(1, (PW * 0.8) / (im.w * 0.75), (PH * 0.8) / (im.h * 0.75));   // 1 px = 0.75 pt at 96 dpi
-  const W = im.w * 0.75 * k, H = im.h * 0.75 * k;
-  const r = p.div.getBoundingClientRect();
-  const sx = (Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2 - r.left;
-  const sy = (Math.max(r.top, visibleArea().top) + Math.min(r.bottom, visibleArea().bottom)) / 2 - r.top;
-  let [cx, cy] = p.vp.convertToPdfPoint(sx, sy);
-  cx = clamp(cx, x0 + W / 2, x1 - W / 2);
-  cy = clamp(cy, y0 + H / 2, y1 - H / 2);
+  const iw = im.w * 0.75, ih = im.h * 0.75;   // 1 px = 0.75 pt at 96 dpi (it's upright on the page, so turns with it)
+  const k = Math.min(1, (PW * 0.8) / iw, (PH * 0.8) / ih, (VW * 0.85) / iw, (VH * 0.85) / ih);
+  const W = iw * k, H = ih * k;
+  const cx = clamp((vx0 + vx1) / 2, x0 + W / 2, x1 - W / 2), cy = clamp((vy0 + vy1) / 2, y0 + H / 2, y1 - H / 2);
   commit(snapshot());
   const s = { page: p.id, type: 'image', x1: cx - W / 2, y1: cy - H / 2, x2: cx + W / 2, y2: cy + H / 2, img: key };
   shapes.push(s);
@@ -1929,8 +1936,7 @@ function highlightSelection() {
   if (!made.length) return;
   shapes.push(...made);
   commit(before);
-  if (tool === 'highlight') return placed();
-  repaint();
+  repaint();   // the highlighter stays on, ready for the next passage
 }
 
 /* ---------- edits ---------- */
@@ -1982,6 +1988,7 @@ function syncControls() {   // the colour and thickness boxes show the selection
   document.body.dataset.fill = fillShapes;
   $('tsize').hidden = k !== 'text';
   $('tsizeVal').textContent = (sel?.type === 'text' ? sel.size : textSize) + ' pt';
+  syncStatus();
 }
 
 function pickColor(c) {   // for the selection, and as the default for new annotations of that kind
@@ -2611,14 +2618,49 @@ function visibleArea() {
   return r.top < innerHeight / 2 ? { top: Math.max(0, r.bottom), bottom: innerHeight } : { top: 0, bottom: Math.min(innerHeight, r.top) };
 }
 const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
+// The pill, while the toolbar is hidden: the tool's icon, then what its keys pick (each with its key): the colours
+// (Shift+1…5), the line thickness (1, 2, 3) and outline or filled (R / O again) for shapes, the size (− +) for
+// text; then the page. The colours and thicknesses can be clicked too.
 function syncStatus() {
   if (!barless) return;
-  const b = document.querySelector(`button[data-tool="${tool}"]`), t = $('status').firstChild;
-  const filled = (tool === 'rect' || tool === 'ellipse') && fillShapes ? ', filled' : '';
-  t.replaceChildren();
-  if (b?.querySelector('svg')) t.append(b.querySelector('svg').cloneNode(true));
-  t.append((TOOL_NAMES[tool] ?? tool) + filled);
+  const b = document.querySelector(`button[data-tool="${tool}"]`), t = $('status').querySelector('.tool');
+  t.replaceChildren(...(b?.querySelector('svg') ? [b.querySelector('svg').cloneNode(true)] : []));
+  t.title = TOOL_NAMES[tool] ?? tool;
+  $('status').querySelector('.opts').replaceChildren(...statusOptions());
   showPage();
+}
+function statusOptions() {
+  const styling = ((tool !== 'select' && tool !== 'eraser') || !!sel) && sel?.type !== 'image';
+  if (!styling) return [];
+  const k = kind(), cur = curColor();
+  const opt = (title, on, key, fn, ...kids) => {
+    const b = el2('button', { type: 'button', tabindex: '-1', class: on ? 'opt on' : 'opt', title }, ...kids, el2('small', {}, key));
+    b.addEventListener('mousedown', e => e.preventDefault());   // keeps a text box being typed in open
+    b.onclick = fn;
+    return b;
+  };
+  const sets = [el2('span', { class: 'set' }, ...palette().map(([n, c], i) => {
+    const b = opt(`${n} (Shift+${i + 1})`, c === cur, String(i + 1), () => pickColor(c), el2('span', { class: 'dot' }));
+    b.firstChild.style.background = c;
+    return b;
+  }))];
+  if (k === 'shape') {
+    const w = sel?.width ?? lineWidth;
+    sets.push(el2('span', { class: 'set' }, ...[[1, 'Thin'], [2, 'Medium'], [4, 'Thick']].map(([v, n], i) => {
+      const b = opt(`${n} (${i + 1})`, v === w, String(i + 1), () => setWidth(v), el2('span', { class: 'line' }));
+      b.firstChild.style.height = Math.max(1, v * 0.75) + 'px';
+      return b;
+    })));
+    const type = sel ? sel.type : tool;
+    if (type === 'rect' || type === 'ellipse') {
+      const filled = sel ? !!sel.fill : fillShapes;
+      sets.push(el2('span', { class: 'set' }, opt(filled ? 'Filled (press ' + (type === 'rect' ? 'R' : 'O') + ' again for outline)' : 'Outline (press ' + (type === 'rect' ? 'R' : 'O') + ' again for filled)',
+        false, type === 'rect' ? 'R' : 'O', () => setFill(!filled), el2('span', { class: filled ? 'fill on' : 'fill', 'data-shape': type }))));
+    }
+  } else if (k === 'text') {
+    sets.push(el2('span', { class: 'set size', title: 'Text size (− and +)' }, `${sel?.type === 'text' ? sel.size : textSize} pt`, el2('small', {}, '− +')));
+  }
+  return sets;
 }
 function setBarless(on, quiet = false) {
   barless = on;

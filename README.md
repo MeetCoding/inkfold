@@ -62,7 +62,7 @@ Coming soon.
 |---|---|
 | Open a PDF | Open any PDF link in Chrome, click the Inkfold toolbar icon on a PDF tab, or, on Inkfold's start page, drop a file or press <kbd>Ctrl</kbd>+<kbd>O</kbd>. (Once a PDF is open, Open is hidden: open another PDF in its own tab.) |
 | Highlight | Press <kbd>H</kbd> and drag across text. Or select text first, then press <kbd>H</kbd>. |
-| After placing | Once something is placed (a shape, highlight, image, text box or note), the pointer tool is back and nothing is selected. Click what you placed to move, resize or change it. |
+| After placing | Once something is placed (a shape, image, text box or note), the pointer tool is back and nothing is selected. The highlighter stays on, so you can highlight one passage after another. Click what you placed to move, resize or change it. |
 | Draw | <kbd>R</kbd> for a rectangle, <kbd>O</kbd> for an ellipse, then drag. Outlined or filled: pick in the toolbar, next to the thickness, or press <kbd>R</kbd> / <kbd>O</kbd> again (the tool's button fills in to show it). Pick one of five colours in the toolbar (<kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>5</kbd> picks one, <kbd>C</kbd> the next), thickness with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (or the three line buttons). |
 | Write | <kbd>T</kbd>, then click where the text should go and type. <kbd>Enter</kbd> starts a new line; <kbd>Esc</kbd> or a click outside finishes. `$…$` is LaTeX. Text size with <kbd>−</kbd> / <kbd>+</kbd>. To change a box later, double-click it (or click it with <kbd>T</kbd>); drag it to move it. |
 | Edit an annotation | Press <kbd>V</kbd> (select). Drag a shape's border to move it, or its corners to resize. Click a highlight to select it. To remove the selected annotation, press <kbd>Del</kbd>. |

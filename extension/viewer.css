@@ -622,13 +622,34 @@ body.barless #barBtn svg { transform: rotate(180deg); }
 /* the current tool and page, small, in the bottom-left corner while the toolbar is away */
 #status {
   position: fixed; left: 10px; bottom: 8px; z-index: 3; display: none; align-items: center; gap: 7px;
-  padding: 3px 10px 3px 7px; border-radius: 999px; font-size: 11.5px; color: var(--dim); pointer-events: none;
+  padding: 3px 10px 3px 9px; border-radius: 999px; font-size: 11.5px; color: var(--dim); pointer-events: none;
   background: color-mix(in srgb, var(--bar) 82%, transparent); border: 1px solid var(--line);
   backdrop-filter: blur(6px); box-shadow: 0 1px 4px rgb(0 0 0 / .08); font-variant-numeric: tabular-nums;
   transition: opacity .2s;
 }
 body.barless #status { display: flex; }
 body.barless.reveal #status { opacity: 0; }
-#status .tool { display: flex; align-items: center; gap: 5px; color: var(--ink); }
-#status .tool svg { width: 13px; height: 13px; }
-#status .pg::before { content: ''; display: inline-block; width: 1px; height: 10px; margin-right: 7px; vertical-align: -1px; background: var(--line); }
+#status .tool { display: flex; align-items: center; color: var(--ink); }
+#status .tool svg { width: 14px; height: 14px; }
+#status .opts, #status .set { display: flex; align-items: center; }
+#status .opts:empty { display: none; }
+#status .set { gap: 1px; padding-left: 6px; border-left: 1px solid var(--line); }
+#status .set + .set { margin-left: 6px; }
+#status .pg { padding-left: 7px; border-left: 1px solid var(--line); }
+/* each option shows the key that picks it, small, at its foot */
+#status .opt {
+  position: relative; display: grid; place-items: center; width: 20px; height: 24px; padding: 0 0 7px; border-radius: 6px;
+  pointer-events: auto; color: var(--dim);
+}
+#status .opt small { position: absolute; left: 0; right: 0; bottom: 0; font-size: 8.5px; line-height: 9px; text-align: center; opacity: .8; }
+#status .opt .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .18); }
+#status .opt.on .dot { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .18), 0 0 0 1.5px var(--bar), 0 0 0 2.5px var(--ink); }
+#status .opt .line { width: 12px; background: currentColor; border-radius: 1px; }
+#status .opt.on { color: var(--ink); }
+#status .opt.on small { color: var(--ink); opacity: 1; font-weight: 600; }
+#status .opt .fill { width: 11px; height: 9px; border: 1.3px solid var(--ink); border-radius: 2px; }
+#status .opt .fill[data-shape="ellipse"] { border-radius: 50%; }
+#status .opt .fill.on { background: var(--ink); }
+#status .size { gap: 5px; color: var(--ink); }
+#status .size small { color: var(--dim); font-size: 10px; }
+body.barless:not(.reveal) #toast { bottom: 46px; }   /* clear of the pill in the corner */
