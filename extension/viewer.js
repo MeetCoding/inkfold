@@ -1,7 +1,11 @@
 import * as pdfjs from './lib/pdf.min.mjs';
 import { notePdf } from './notes.js';
-import { layout, cached, svgOf, pdfOps, SIZES, PAD, cleanWith, wrapText } from './textbox.js';
+import { layout, cached, svgOf, SIZES, PAD, wrapText } from './textbox.js';
 import * as annotations from './annotations.js';
+import { buildPdf } from './save.js';
+import { parseRanges } from './pages.js';
+import { mergeLines } from './geometry.js';
+import { looksLikeMarkdown } from './paste.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -1360,23 +1364,6 @@ async function noteSource(after) {
   return ok ? ta.value : null;
 }
 
-// "2-4, 7, 10-end" -> [{ label: '2-4', idx: [1, 2, 3] }, { label: '7', idx: [6] }, …]
-function parseRanges(text, n) {
-  const groups = [];
-  for (const raw of text.split(/[,;]/)) {
-    const t = raw.trim().toLowerCase();
-    if (!t) continue;
-    const mt = t.match(/^(\d+|end|last)?\s*(?:(-|–|—|to)\s*(\d+|end|last)?)?$/);
-    if (!mt || (!mt[1] && !mt[2])) throw new Error(`“${raw.trim()}” isn’t a page or a range.`);
-    const num = s => (s === undefined ? undefined : /^(end|last)$/.test(s) ? n : +s);
-    const a = num(mt[1]) ?? 1, b = mt[2] ? num(mt[3]) ?? n : a;
-    if (a < 1 || b > n || a > b) throw new Error(`“${raw.trim()}” is outside pages 1–${n}.`);
-    groups.push({ label: a === b ? `${a}` : `${a}-${b}`, idx: Array.from({ length: b - a + 1 }, (_, k) => a - 1 + k) });
-  }
-  if (!groups.length) throw new Error('Type the pages first: a page like 3, a range like 5-7, or several, like 3, 5-7, 10-end.');
-  return groups;
-}
-
 function rangeIds() {
   try {
     const ids = new Set(parseRanges($('range').value, entries.length).flatMap(g => g.idx).map(k => entries[k].id));
@@ -1665,22 +1652,6 @@ function b64(bytes) {
 }
 
 /* ---------- magic paste ---------- */
-
-// Markdown or just text? A couple of Markdown signs (a heading, a table, code, a checklist,
-// or several lighter ones like lists, bold and links) make it Markdown.
-function looksLikeMarkdown(t) {
-  let score = 0;
-  if (/^#{1,6}\s+\S/m.test(t)) score += 2;
-  if (/^```/m.test(t)) score += 2;
-  if (/^\s*\|.*\|\s*$/m.test(t) && /^\s*\|?\s*:?-{3,}/m.test(t)) score += 2;
-  if (/^\s*[-*+] \[[ xX]\]\s/m.test(t)) score += 2;
-  if (/^\s*([-*+]|\d+[.)])\s+\S/m.test(t) && t.includes('\n')) score += 1;
-  if (/\*\*[^*\n]+\*\*|__[^_\n]+__/.test(t)) score += 1;
-  if (/\[[^\]\n]+\]\([^)\s]+\)/.test(t)) score += 1;
-  if (/^>\s/m.test(t)) score += 1;
-  if (/\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\begin\{/.test(t)) score += 1;
-  return score >= 2;
-}
 
 // What's on the clipboard: { img (a data: URL or null), t (text, tidied) }.
 async function readClip() {
@@ -2155,19 +2126,6 @@ function highlightSelection() {
   commit(before);
   if (tool === 'highlight') return placed();
   repaint();
-}
-
-function mergeLines(boxes) {   // join word boxes that sit on the same line into one box per line
-  const out = [];
-  boxes.sort((a, b) => a.t - b.t || a.l - b.l);
-  for (const b of boxes) {
-    const h = b.b - b.t;
-    const m = out.find(o => Math.min(o.b, b.b) - Math.max(o.t, b.t) > 0.5 * Math.min(h, o.b - o.t)
-      && b.l <= o.r + h && b.r >= o.l - h);
-    if (m) Object.assign(m, { l: Math.min(m.l, b.l), t: Math.min(m.t, b.t), r: Math.max(m.r, b.r), b: Math.max(m.b, b.b) });
-    else out.push({ ...b });
-  }
-  return out;
 }
 
 /* ---------- edits ---------- */
@@ -2655,95 +2613,12 @@ function download(data, file) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-// Writes a PDF holding `list` (some or all entries, in order) with their rotations and annotations.
-// It edits the original file rather than copying pages out, so bookmarks, metadata and forms survive;
-// anything only the dropped pages used is then removed, so deleted pages really are gone from the file.
-async function build(list) {
-  const L = await lib();
-  const {
-    PDFDocument, PDFName, PDFNumber, PDFDict, PDFArray, PDFRef, PDFStream,
-    pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode, setCharacterSqueeze, radians,
-  } = L;
-  const doc = await PDFDocument.load(await bytesOf(docs.get('main')), { updateMetadata: false });
-  const ctx = doc.context, N = PDFName.of;
-  const orig = doc.getPages();
-  const marks = annotations.writer(L, doc, {
-    layout, pdfOps,
-    images: key => { const im = imgs.get(key); return im ? { mime: im.mime, bytes: dataBytes(im.src) } : null; },
-  });
-
-  const copied = new Map();   // note pages, copied in from their own small PDFs
-  for (const key of new Set(list.map(e => e.doc))) {
-    if (key === 'main') continue;
-    const src = await PDFDocument.load(await bytesOf(docs.get(key)));
-    copied.set(key, await doc.copyPages(src, src.getPageIndices()));
-  }
-  const out = list.map(e => (e.doc === 'main' ? orig[e.i] : copied.get(e.doc)[e.i]));
-
-  // Settings a page inherits from the old page tree are copied onto the page itself, so nothing is lost when it moves.
-  for (const [k, pg] of out.entries()) {
-    for (const key of ['Resources', 'MediaBox', 'CropBox', 'Rotate']) {
-      if (pg.node.get(N(key))) continue;
-      const v = pg.node.getInheritableAttribute(N(key));
-      if (v) pg.node.set(N(key), v);
-    }
-    const r = pg.node.lookup(N('Rotate'));
-    pg.node.set(N('Rotate'), PDFNumber.of((((r?.asNumber?.() ?? 0) + list[k].rot) % 360 + 360) % 360));
-    const c = list[k].crop;   // cropped here: the page's visible box
-    if (c) pg.setCropBox(c[0], c[1], c[2] - c[0], c[3] - c[1]);
-  }
-  // The annotations from an earlier session come off; the current set is written back, each with its own
-  // appearance so every viewer draws it the same.
-  for (const pg of out) annotations.dropOurs(L, pg);
-  const target = new Map(list.map((e, k) => [e.id, out[k]]));
-  for (const s of shapes) {
-    const pg = target.get(s.page);
-    if (pg) await marks.add(pg, s);
-  }
-
-  // Recognised text goes onto its pages as invisible text, so the copy can be searched and selected anywhere.
-  const scanned = list.filter(e => e.doc === 'main' && ocrText.has(e.i));
-  if (scanned.length) {
-    const helv = await marks.font();
-    const clean = cleanWith(new Set(helv.getCharacterSet()));
-    for (const e of scanned) {
-      const pg = target.get(e.id);
-      pg.node.wrapContentStreams(ctx.register(ctx.stream('q')), ctx.register(ctx.stream('Q')));   // our text starts from a clean state
-      for (const it of ocrText.get(e.i)) {
-        const t = clean(it.str);
-        const [a, b, , , x, y] = it.transform, size = Math.hypot(a, b), natural = t.trim() ? helv.widthOfTextAtSize(t, size) : 0;
-        if (!natural || size < 1) continue;
-        pg.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible), setCharacterSqueeze(+(100 * it.width / natural).toFixed(2)));
-        pg.drawText(t, { x, y, size, font: helv, rotate: radians(Math.atan2(b, a)) });
-        pg.pushOperators(popGraphicsState());
-      }
-    }
-  }
-
-  // Swap in a fresh, flat page tree holding just these pages, in this order.
-  const tree = ctx.register(ctx.obj({ Type: 'Pages', Kids: out.map(p => p.ref), Count: out.length }));
-  out.forEach(p => p.node.set(N('Parent'), tree));
-  doc.catalog.set(N('Pages'), tree);
-
-  // Remove every object that is no longer reachable, treating dropped pages as cut off.
-  const dropped = new Set(orig.filter(p => !out.includes(p)).map(p => p.ref.toString()));
-  const seen = new Set(), todo = Object.values(ctx.trailerInfo).filter(Boolean);
-  while (todo.length) {
-    const o = todo.pop();
-    if (o instanceof PDFRef) {
-      const k = o.toString();
-      if (seen.has(k) || dropped.has(k)) continue;
-      seen.add(k);
-      const v = ctx.lookup(o);
-      if (v) todo.push(v);
-    } else if (o instanceof PDFDict) todo.push(...o.values());
-    else if (o instanceof PDFArray) todo.push(...o.asArray());
-    else if (o instanceof PDFStream) todo.push(o.dict);
-  }
-  for (const [ref] of ctx.enumerateIndirectObjects()) if (!seen.has(ref.toString())) ctx.delete(ref);
-
-  return doc.save({ updateFieldAppearances: false });
-}
+// The PDF to save: `list` (some or all entries, in order) with their rotations, crops and annotations (save.js).
+const build = async list => buildPdf(await lib(), {
+  list, shapes, ocrText,
+  bytesOf: key => bytesOf(docs.get(key)),
+  images: key => { const im = imgs.get(key); return im ? { mime: im.mime, bytes: dataBytes(im.src) } : null; },
+});
 
 // Short messages at the bottom of the window; some carry an action such as Undo.
 function say(text, opts = {}) {

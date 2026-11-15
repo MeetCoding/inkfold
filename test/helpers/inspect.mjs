@@ -15,3 +15,15 @@ export async function annotationsOf(bytes) {
   await task.destroy();   // (pdf.js 6 documents have no destroy(); their loading task does)
   return pages;
 }
+
+// Each page's rotation, visible box and text.
+export async function textOf(bytes) {
+  const task = getDocument({ data: new Uint8Array(bytes), verbosity: 0 });
+  const pdf = await task.promise, out = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const pg = await pdf.getPage(n);
+    out.push({ rotate: pg.rotate, view: pg.view, text: (await pg.getTextContent()).items.map(i => i.str).join(' ') });
+  }
+  await task.destroy();
+  return out;
+}
