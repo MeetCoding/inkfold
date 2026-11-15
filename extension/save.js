@@ -40,7 +40,16 @@ export async function buildPdf(L, { list, shapes, bytesOf, images, ocrText = new
     const r = pg.node.lookup(N('Rotate'));
     pg.node.set(N('Rotate'), PDFNumber.of((((r?.asNumber?.() ?? 0) + list[k].rot) % 360 + 360) % 360));
     const c = list[k].crop;   // cropped here: the page's visible box
-    if (c) pg.setCropBox(c[0], c[1], c[2] - c[0], c[3] - c[1]);
+    if (c) {
+      // A box reaching past the page makes it bigger, with white space there: the media box (the page's paper) grows
+      // to take it in, since viewers show only where the two boxes overlap.
+      const m = pg.getMediaBox(), mx2 = m.x + m.width, my2 = m.y + m.height;
+      if (c[0] < m.x || c[1] < m.y || c[2] > mx2 || c[3] > my2) {
+        const x1 = Math.min(m.x, c[0]), y1 = Math.min(m.y, c[1]);
+        pg.setMediaBox(x1, y1, Math.max(mx2, c[2]) - x1, Math.max(my2, c[3]) - y1);
+      }
+      pg.setCropBox(c[0], c[1], c[2] - c[0], c[3] - c[1]);
+    }
   }
   // The annotations from an earlier session come off; the current set is written back, each with its own
   // appearance so every viewer draws it the same.

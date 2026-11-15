@@ -60,3 +60,15 @@ test('recognised text is written as invisible, searchable text', async () => {
   const [one] = await textOf(bytes);
   assert.match(one.text, /Recognised words/);
 });
+
+test('a crop reaching past the page makes it bigger, with white space', async () => {
+  const bytes = await buildPdf(lib, {
+    list: [page(0, { crop: [-100, 0, 712, 892] })], shapes: [], bytesOf: await sources(), images: () => null,
+  });
+  const [one] = await textOf(bytes);
+  assert.deepEqual(one.view, [-100, 0, 712, 892], 'the page is the whole box');
+  assert.match(one.text, /^Page 1 of/, 'and still has its text');
+  const doc = await lib.PDFDocument.load(bytes);
+  const m = doc.getPage(0).getMediaBox();
+  assert.deepEqual([m.x, m.y, m.width, m.height], [-100, 0, 812, 892]);
+});

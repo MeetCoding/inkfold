@@ -2091,17 +2091,21 @@ function startCrop(p) {
   const had = p.e.crop;
   p.cropping = true;
   size(p);
-  // The whole page should be in view, clear of the crop bar: zoom out for a moment if it isn't (put back after).
+  // The whole page should be in view, clear of the crop bar, with a little room around it to drag the box out into:
+  // zoom out for a moment if it isn't (put back after).
   const roomH = innerHeight - barHeight() - 100, roomW = document.documentElement.clientWidth - 48;
-  const over = Math.max(p.vp.height / roomH, p.vp.width / roomW), before = { zoom, fit };
+  const over = Math.max(p.vp.height * 1.2 / roomH, p.vp.width * 1.2 / roomW), before = { zoom, fit };
   if (over > 1) setZoom(zoom / over, null, false, true);
   render(p);
   const box = had ? fractionsOf(p, had) : [0, 0, 1, 1];
   const ui = el2('div', { class: 'cropper fresh' }, el2('div', { class: 'crop-box' },
-    el2('b', { class: 'thirds' }), el2('span', { class: 'crop-hint' }, 'Drag the corners or edges'),
+    el2('b', { class: 'thirds' }), el2('span', { class: 'crop-hint' }, 'Drag the corners or edges, or out past the page for white space'),
     ...['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map(h => el2('i', { 'data-h': h }))));
+  const sheet = el2('div', { class: 'crop-sheet' });   // white, under the page, wherever the box reaches past it
+  p.div.prepend(sheet);
   p.div.append(ui);
-  cropping = { p, box, ui, before: over > 1 ? before : null };
+  p.div.classList.add('cropping');
+  cropping = { p, box, ui, sheet, before: over > 1 ? before : null };
   ui.addEventListener('pointerdown', cropDrag);
   drawCrop();
   $('cropTitle').textContent = `Crop page ${pages.indexOf(p) + 1}`;
@@ -2115,9 +2119,11 @@ function startCrop(p) {
 
 function endCrop() {
   if (!cropping) return;
-  const { p, ui, before } = cropping;
+  const { p, ui, sheet, before } = cropping;
   cropping = null;
   ui.remove();
+  sheet.remove();
+  p.div.classList.remove('cropping');
   $('cropbar').hidden = true;
   document.body.classList.remove('cropping');
   p.cropping = false;
@@ -2141,16 +2147,21 @@ function fractionsOf(p, [x1, y1, x2, y2]) {
   const a = vp.convertToViewportPoint(x1, y1), b = vp.convertToViewportPoint(x2, y2);
   return [Math.min(a[0], b[0]) / vp.width, Math.min(a[1], b[1]) / vp.height, Math.max(a[0], b[0]) / vp.width, Math.max(a[1], b[1]) / vp.height];
 }
+// A crop box can reach past the page by up to half its size on each side: the page grows, with white space there.
+const CROP_OUT = 0.5;
 function pointsOf(p, [l, t, r, b]) {
   const vp = p.page.getViewport({ scale: 1, rotation: rotationOf(p) });
   const a = vp.convertToPdfPoint(l * vp.width, t * vp.height), c = vp.convertToPdfPoint(r * vp.width, b * vp.height);
-  const [X1, Y1, X2, Y2] = p.page.view, round = v => Math.round(v * 100) / 100;
-  return [Math.max(X1, Math.min(a[0], c[0])), Math.max(Y1, Math.min(a[1], c[1])), Math.min(X2, Math.max(a[0], c[0])), Math.min(Y2, Math.max(a[1], c[1]))].map(round);
+  const round = v => Math.round(v * 100) / 100;
+  return [Math.min(a[0], c[0]), Math.min(a[1], c[1]), Math.max(a[0], c[0]), Math.max(a[1], c[1])].map(round);
 }
 
+// The box, in the cropper (which reaches CROP_OUT past the page all round), and the white sheet under the page.
 function drawCrop() {
-  const { p, box: [l, t, r, b], ui } = cropping, W = p.div.clientWidth, H = p.div.clientHeight;
-  Object.assign(ui.firstChild.style, { left: l * W + 'px', top: t * H + 'px', width: (r - l) * W + 'px', height: (b - t) * H + 'px' });
+  const { p, box: [l, t, r, b], ui, sheet } = cropping, W = p.div.clientWidth, H = p.div.clientHeight;
+  Object.assign(ui.style, { inset: `${-CROP_OUT * H}px ${-CROP_OUT * W}px` });
+  Object.assign(ui.firstChild.style, { left: (l + CROP_OUT) * W + 'px', top: (t + CROP_OUT) * H + 'px', width: (r - l) * W + 'px', height: (b - t) * H + 'px' });
+  Object.assign(sheet.style, { left: l * W + 'px', top: t * H + 'px', width: (r - l) * W + 'px', height: (b - t) * H + 'px' });
   $('cropOk').disabled = false;
 }
 
@@ -2159,7 +2170,8 @@ function cropDrag(ev) {
   ev.preventDefault();
   ev.stopPropagation();
   const { p, ui } = cropping, rect = p.div.getBoundingClientRect();
-  const at = e => [Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)), Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))];
+  const lo = -CROP_OUT, hi = 1 + CROP_OUT;
+  const at = e => [clamp((e.clientX - rect.left) / rect.width, lo, hi), clamp((e.clientY - rect.top) / rect.height, lo, hi)];
   const start = at(ev), from = [...cropping.box];
   const minW = 24 / rect.width, minH = 24 / rect.height;
   let h = ev.target.dataset.h ?? (ev.target.closest('.crop-box') ? 'move' : 'new');
@@ -2172,7 +2184,7 @@ function cropDrag(ev) {
     let [l, t, r, b] = from;
     if (h === 'move') {
       const w = r - l, hh = b - t;
-      l = Math.min(1 - w, Math.max(0, l + dx)); t = Math.min(1 - hh, Math.max(0, t + dy));
+      l = clamp(l + dx, lo, hi - w); t = clamp(t + dy, lo, hi - hh);
       cropping.box = [l, t, l + w, t + hh];
     } else {
       if (h.includes('w')) l = Math.min(x, r - minW);
@@ -2180,7 +2192,7 @@ function cropDrag(ev) {
       if (h.includes('n')) t = Math.min(y, b - minH);
       if (h.includes('s')) b = Math.max(y, t + minH);
       if (h === 'se' && from[0] === from[2]) { l = Math.min(start[0], x); r = Math.max(start[0], x); t = Math.min(start[1], y); b = Math.max(start[1], y); }
-      cropping.box = [Math.max(0, l), Math.max(0, t), Math.min(1, r), Math.min(1, b)];
+      cropping.box = [Math.max(lo, l), Math.max(lo, t), Math.min(hi, r), Math.min(hi, b)];
     }
     drawCrop();
   };
@@ -2229,7 +2241,7 @@ async function trimCrop() {
 
 function applyCrop(all = false) {
   if (!cropping) return;
-  const { p, box } = cropping, whole = box[0] <= 0.001 && box[1] <= 0.001 && box[2] >= 0.999 && box[3] >= 0.999;
+  const { p, box } = cropping, whole = box.every((v, i) => Math.abs(v - [0, 0, 1, 1][i]) <= 0.001);
   const crop = whole ? null : pointsOf(p, box);
   const targets = all ? pages.filter(q => sameSize(q, p)) : [p];
   endCrop();
@@ -2238,7 +2250,10 @@ function applyCrop(all = false) {
   });
   inView(p);
   if (all) say(crop ? `Cropped ${targets.length} pages the same way.` : `Showing ${targets.length} pages whole again.`);
-  else if (crop) say(`Cropped page ${pages.indexOf(p) + 1}. Ctrl+Z brings it back.`);
+  else if (crop) {
+    const [X1, Y1, X2, Y2] = p.page.view, grew = crop[0] < X1 || crop[1] < Y1 || crop[2] > X2 || crop[3] > Y2;
+    say(grew ? `Page ${pages.indexOf(p) + 1} has white space added. Ctrl+Z takes it away.` : `Cropped page ${pages.indexOf(p) + 1}. Ctrl+Z brings it back.`);
+  }
 }
 
 /* ---------- saving ---------- */

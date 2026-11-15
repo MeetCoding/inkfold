@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Crop can add white space**: drag the crop box out past the page (up to half its size on each side) and the
+  page grows, with white space there, on screen and in saved copies.
+- **Pictures fit the window**: a picture added to a page is sized and placed so all four corners are in view, in
+  the middle of the part of the page on screen.
+- **The highlighter stays on** after each highlight, ready for the next passage.
+- **With the toolbar hidden**, the pill in the bottom-left shows the tool's icon and its options, each with the key
+  that picks it: colours (Shift+1…5), thickness (1 2 3) and outline/filled (R/O) for shapes, size (− +) for text.
+  They can be clicked too.
 - **The toolbar is at the bottom**, and every card (Pages and file, Find, Zoom, Magic paste, the shortcuts, the
   compression offer) opens in the bottom-right corner, just above it. Hidden (Shift+H), the toolbar slides down and
   comes back when the pointer touches the bottom edge; the small tool-and-page pill sits in the bottom-left corner.

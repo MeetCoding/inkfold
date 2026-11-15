@@ -530,7 +530,10 @@ button.primary:disabled, button.primary:disabled:hover, #panel .row button.prima
 .dropspot.v span::before { content: ''; }
 
 /* ---------- cropping a page ---------- */
+/* The cropper reaches past the page (drawCrop sets how far), so the box can be dragged out into white space. */
 .cropper { position: absolute; inset: 0; z-index: 6; overflow: hidden; cursor: crosshair; touch-action: none; }
+.page.cropping { content-visibility: visible; z-index: 5; }   /* (else the page clips what reaches past it) */
+.crop-sheet { position: absolute; z-index: -1; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .06); }
 .crop-box {
   position: absolute; cursor: move; outline: 1.5px solid var(--accent); outline-offset: -1.5px;
   box-shadow: 0 0 0 100vmax rgb(20 20 18 / .5);
