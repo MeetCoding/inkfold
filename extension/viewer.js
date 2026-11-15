@@ -6,6 +6,7 @@ import { buildPdf } from './save.js';
 import { parseRanges } from './pages.js';
 import { mergeLines } from './geometry.js';
 import { looksLikeMarkdown } from './paste.js';
+import { createHistory } from './history.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -45,7 +46,7 @@ const store = {
 //   { page, type: 'image', x1, y1, x2, y2, img }        (img: key into imgs, which holds the picture itself)
 const docs = new Map();         // key -> { pdf, bytes, pages: [PDFPageProxy] }
 const views = new Map();        // entry id -> on-screen page
-let entries = [], pages = [], shapes = [], history = [], future = [], hovered = null, renderTimer, nextId = 1, loadId = 0, name;
+let entries = [], pages = [], shapes = [], hovered = null, renderTimer, nextId = 1, loadId = 0, name;
 let tool = 'select', sel = null, drag = null, pick = null, dirty = false, msgTimer;
 let zoom = 1, fit = store.get('fit', 'auto'), spread = store.get('spread', false);
 let lineWidth = store.get('width', 2);
@@ -124,7 +125,8 @@ async function openPdf(buf, fileName, from = {}) {
   if (srcUrl?.startsWith('file:')) { const u = srcUrl; recallHandle(u).then(h => { if (srcUrl === u) srcStored = h ?? null; }); }
   io.disconnect();
   views.clear();
-  [name, entries, shapes, history, future, sel, dirty] = [fileName, [], [], [], [], null, false];
+  [name, entries, shapes, sel, dirty] = [fileName, [], [], null, false];
+  edits.clear();
   disk = onDisk;
   syncUndo();
   ocrText.clear();
@@ -2130,18 +2132,16 @@ function highlightSelection() {
 
 /* ---------- edits ---------- */
 
-const HISTORY = 300;   // undo steps kept
+const edits = createHistory({ limit: 300 });   // undo steps kept (history.js)
 function commit(before) {
-  history.push(before);
-  if (history.length > HISTORY) history.splice(0, history.length - HISTORY);
-  future = [];
+  edits.record(before);
   dirty = true;
   syncUndo();
 }
 
 function syncUndo() {   // the buttons are greyed out when there's nothing to undo or redo
-  $('undo').disabled = !history.length;
-  $('redo').disabled = !future.length;
+  $('undo').disabled = !edits.canUndo;
+  $('redo').disabled = !edits.canRedo;
 }
 
 const kind = () => { const t = sel ? sel.type : tool; return t === 'highlight' || t === 'text' ? t : 'shape'; };
@@ -2204,8 +2204,7 @@ function remove() {
   select(null);
 }
 
-function restore(state) {
-  const s = JSON.parse(state);
+function restore(s) {   // s: { entries, shapes }, from history
   const changed = JSON.stringify(s.entries) !== JSON.stringify(entries);
   [entries, shapes, dirty, sel] = [s.entries, s.shapes, true, null];
   if (changed) relayout();
@@ -2214,16 +2213,16 @@ function restore(state) {
 }
 
 function undo() {
-  if (!history.length) return say('Nothing to undo.');
-  future.push(snapshot());
-  restore(history.pop());
+  const back = edits.canUndo && edits.undo(snapshot());
+  if (!back) { syncUndo(); return say('Nothing to undo.'); }
+  restore(back);
   syncUndo();
 }
 
 function redo() {
-  if (!future.length) return say('Nothing to redo.');
-  history.push(snapshot());
-  restore(future.pop());
+  const next = edits.canRedo && edits.redo(snapshot());
+  if (!next) { syncUndo(); return say('Nothing to redo.'); }
+  restore(next);
   syncUndo();
 }
 
