@@ -1,6 +1,7 @@
 import * as pdfjs from './lib/pdf.min.mjs';
 import { notePdf } from './notes.js';
 import { layout, cached, svgOf, pdfOps, SIZES, PAD, cleanWith, wrapText } from './textbox.js';
+import * as annotations from './annotations.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -14,8 +15,6 @@ const workerReady = (async () => {
   if (w) pdfjs.GlobalWorkerOptions.workerPort = w;
 })();
 
-const MARK = 'Inkfold';         // author tag on the annotations we write, so we can re-edit them later
-const MARKS = [MARK, 'PDF Shapes'];   // also recognise files saved by the earlier name
 const CSS_PER_PT = 96 / 72;
 const NS = 'http://www.w3.org/2000/svg';
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -137,7 +136,7 @@ async function openPdf(buf, fileName, from = {}) {
   document.title = title ? `${title} (${name})` : name;
   $('pages').setAttribute('aria-label', title || name);
 
-  const stamps = [], boxes = [];   // images and shapes Inkfold saved: details pdf.js doesn't give, read back below
+  const wanted = [];   // annotations Inkfold saved whose details pdf.js doesn't give: read back from the file below
   imgs.clear();
   const annots = await Promise.all(main.pages.map(page => page.getAnnotations().catch(() => [])));
   for (const [i] of main.pages.entries()) {
@@ -145,33 +144,14 @@ async function openPdf(buf, fileName, from = {}) {
     entries.push(e);
     // Annotations saved by an earlier session become editable again; pdf.js is told not to paint them.
     for (const a of annots[i]) {
-      if (!MARKS.includes(a.titleObj?.str)) continue;
-      const color = '#' + [...(a.color || [0, 0, 0])].map(v => v.toString(16).padStart(2, '0')).join('');
-      if (a.subtype === 'Highlight' && a.quadPoints) {
-        const q = a.quadPoints, rects = [];   // pdf.js normalises each quad to TL, TR, BL, BR
-        for (let k = 0; k < q.length; k += 8) rects.push([q[k], q[k + 5], q[k + 2], q[k + 1]]);
-        shapes.push({ page: e.id, type: 'highlight', rects, color });
-      } else if (a.subtype === 'Square' || a.subtype === 'Circle') {
-        const w = a.borderStyle?.width || 1, [x1, y1, x2, y2] = a.rect;
-        const s = {
-          page: e.id, type: a.subtype === 'Square' ? 'rect' : 'ellipse',
-          x1: x1 + w / 2, y1: y1 + w / 2, x2: x2 - w / 2, y2: y2 - w / 2, color, width: w,
-        };
-        shapes.push(s);
-        boxes.push({ s, id: a.id });   // filled or not: its /IC, which pdf.js doesn't pass on
-      } else if (a.subtype === 'FreeText') {
-        const [x1, , , y2] = a.rect, da = a.defaultAppearanceData ?? {};
-        const fc = da.fontColor?.length === 3 ? '#' + [...da.fontColor].map(v => v.toString(16).padStart(2, '0')).join('') : colors.text;
-        shapes.push({ page: e.id, type: 'text', x1, y1: y2, x2: x1, y2, text: a.contentsObj?.str ?? '', size: da.fontSize || 12, color: fc });
-      } else if (a.subtype === 'Stamp') {
-        const s = { page: e.id, type: 'image', x1: a.rect[0], y1: a.rect[1], x2: a.rect[2], y2: a.rect[3], img: null };
-        shapes.push(s);
-        stamps.push({ s, id: a.id });
-      } else continue;
+      const got = annotations.read(a, e.id, { textColor: colors.text });
+      if (!got) continue;
+      shapes.push(got.shape);
+      if (got.details) wanted.push({ shape: got.shape, id: a.id, details: got.details });
       main.pdf.annotationStorage.setValue(a.id, { noView: true });
     }
   }
-  if (stamps.length || boxes.length) await readMarks(await bytesOf(main), stamps, boxes);
+  if (wanted.length) await readMarks(await bytesOf(main), wanted);
   if (id !== loadId) return false;
   layoutPages();
   const back = restorePlace(main);
@@ -1653,48 +1633,26 @@ async function placeImage(p, src) {
   say('Image added. Click it to move it, resize it or remove it.');
 }
 
-// What pdf.js doesn't report about annotations Inkfold saved, read from the file itself: each image's pixels, and
-// whether each rectangle or ellipse is filled (its interior colour, /IC).
-async function readMarks(bytes, stamps, boxes) {
-  const { PDFDocument, PDFRef, PDFName, PDFDict, PDFArray, decodePDFRawStream } = await lib();
-  const N = PDFName.of;
-  let ctx;
-  try { ctx = (await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })).context; } catch { ctx = null; }
-  const annot = id => { const m = /^(\d+)R(\d*)$/.exec(id); return ctx.lookup(PDFRef.of(+m[1], +(m[2] || 0)), PDFDict); };
-  for (const { s, id } of boxes) {
-    try { if (annot(id).lookup(N('IC'), PDFArray)?.size() >= 1) s.fill = true; } catch {}
-  }
-  for (const { s, id } of stamps) {
-    try {
-      const look = annot(id).lookup(N('AP'), PDFDict).lookup(N('N'));
-      const xo = look.dict.lookup(N('Resources'), PDFDict).lookup(N('XObject'), PDFDict);
-      const pic = xo.lookup(xo.keys()[0]), d = pic.dict;
-      const w = d.lookup(N('Width')).asNumber(), h = d.lookup(N('Height')).asNumber(), filter = String(d.lookup(N('Filter')));
+// What pdf.js doesn't report about annotations Inkfold saved, read from the file itself (see annotations.js):
+// whether each rectangle or ellipse is filled, and each image's pixels, which become a picture again here.
+async function readMarks(bytes, wanted) {
+  for (const { shape: s, id, picture: pic } of await annotations.readDetails(await lib(), bytes, wanted)) {
+    if (pic) {
       let src;
-      if (filter === '/DCTDecode') src = 'data:image/jpeg;base64,' + b64(pic.contents);
-      else {   // pdf-lib stores PNGs as raw colour plus a separate alpha mask
-        const raw = decodePDFRawStream(pic).decode(), n = raw.length / (w * h);
-        const mask = d.lookup(N('SMask'));
-        const alpha = mask ? decodePDFRawStream(mask).decode() : null;
-        const rgba = new Uint8ClampedArray(w * h * 4);
-        for (let i = 0; i < w * h; i++) {
-          rgba[i * 4] = raw[i * n]; rgba[i * 4 + 1] = raw[i * n + (n >= 3 ? 1 : 0)]; rgba[i * 4 + 2] = raw[i * n + (n >= 3 ? 2 : 0)];
-          rgba[i * 4 + 3] = alpha ? alpha[i] : 255;
-        }
+      if (pic.mime === 'image/jpeg') src = 'data:image/jpeg;base64,' + b64(pic.bytes);
+      else {
         const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        c.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
+        c.width = pic.w;
+        c.height = pic.h;
+        c.getContext('2d').putImageData(new ImageData(pic.rgba, pic.w, pic.h), 0, 0);
         src = c.toDataURL('image/png');
       }
       const key = 'img' + nextImg++;
-      imgs.set(key, { src, w, h, mime: filter === '/DCTDecode' ? 'image/jpeg' : 'image/png' });
+      imgs.set(key, { src, w: pic.w, h: pic.h, mime: pic.mime });
       s.img = key;
-    } catch { s.img = null; }
-  }
-  // A stamp that couldn't be read stays in the file as it was (pdf.js draws it), but isn't editable.
-  for (const { s, id } of stamps) {
-    if (s.img) continue;
+      continue;
+    }
+    // A stamp that couldn't be read stays in the file as it was (pdf.js draws it), but isn't editable.
     shapes.splice(shapes.indexOf(s), 1);
     docs.get('main').pdf.annotationStorage.setValue(id, { noView: false });
   }
@@ -2701,16 +2659,18 @@ function download(data, file) {
 // It edits the original file rather than copying pages out, so bookmarks, metadata and forms survive;
 // anything only the dropped pages used is then removed, so deleted pages really are gone from the file.
 async function build(list) {
+  const L = await lib();
   const {
-    PDFDocument, PDFName, PDFNumber, PDFString, PDFHexString, PDFDict, PDFArray, PDFRef, PDFStream, StandardFonts,
+    PDFDocument, PDFName, PDFNumber, PDFDict, PDFArray, PDFRef, PDFStream,
     pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode, setCharacterSqueeze, radians,
-  } = await lib();
-  let helv = null;   // Helvetica, added only if there are text boxes
-  const pics = new Map();   // image key -> the picture embedded in this file (once, however often it's used)
+  } = L;
   const doc = await PDFDocument.load(await bytesOf(docs.get('main')), { updateMetadata: false });
   const ctx = doc.context, N = PDFName.of;
-  const round = v => +v.toFixed(2), num = (...v) => v.map(round).join(' ');
   const orig = doc.getPages();
+  const marks = annotations.writer(L, doc, {
+    layout, pdfOps,
+    images: key => { const im = imgs.get(key); return im ? { mime: im.mime, bytes: dataBytes(im.src) } : null; },
+  });
 
   const copied = new Map();   // note pages, copied in from their own small PDFs
   for (const key of new Set(list.map(e => e.doc))) {
@@ -2732,90 +2692,19 @@ async function build(list) {
     const c = list[k].crop;   // cropped here: the page's visible box
     if (c) pg.setCropBox(c[0], c[1], c[2] - c[0], c[3] - c[1]);
   }
-  // Drop the annotations from an earlier session; the current set is written back below.
-  for (const pg of out) {
-    const annots = pg.node.Annots();
-    for (let i = (annots?.size() ?? 0) - 1; i >= 0; i--) {
-      const d = annots.lookup(i);
-      if (!(d instanceof PDFDict)) continue;
-      const author = d.lookup(N('T')), kind = d.lookup(N('Subtype'));
-      if (!(author instanceof PDFString || author instanceof PDFHexString) || !MARKS.includes(author.decodeText())) continue;
-      if ([N('Square'), N('Circle'), N('Highlight'), N('FreeText'), N('Stamp')].includes(kind)) annots.remove(i);
-    }
-  }
-
-  // Real Square / Circle / Highlight annotations, each with its own appearance so every viewer draws it the same.
+  // The annotations from an earlier session come off; the current set is written back, each with its own
+  // appearance so every viewer draws it the same.
+  for (const pg of out) annotations.dropOurs(L, pg);
   const target = new Map(list.map((e, k) => [e.id, out[k]]));
   for (const s of shapes) {
     const pg = target.get(s.page);
-    if (!pg) continue;
-    const rgb = s.color ? [1, 3, 5].map(i => +(parseInt(s.color.slice(i, i + 2), 16) / 255).toFixed(3)) : [0, 0, 0];
-    let dict, extra = { C: rgb };
-    if (s.type === 'image') {
-      // A Stamp annotation whose appearance is the picture, so every viewer shows it; Inkfold reads it back.
-      const im = imgs.get(s.img);
-      if (!im) continue;
-      let pic = pics.get(s.img);
-      if (!pic) pics.set(s.img, pic = await (im.mime === 'image/jpeg' ? doc.embedJpg(dataBytes(im.src)) : doc.embedPng(dataBytes(im.src))));
-      const box = [s.x1, s.y1, s.x2, s.y2].map(round), w = round(s.x2 - s.x1), h = round(s.y2 - s.y1);
-      const look = ctx.stream(`q ${w} 0 0 ${h} ${box[0]} ${box[1]} cm /Im Do Q`, {
-        Type: 'XObject', Subtype: 'Form', BBox: box, Resources: { XObject: { Im: pic.ref } },
-      });
-      dict = { Subtype: 'Stamp', Rect: box, Name: 'Image', Contents: PDFHexString.fromText('Image'), AP: { N: ctx.register(look) } };
-      extra = {};
-    } else if (s.type === 'text') {
-      // A FreeText annotation: the text as its contents, drawn by its own appearance (Helvetica plus math outlines).
-      // The leading and trailing no-op text objects tell readers (pdf.js included) the font size and colour.
-      const L = await layout(s.text, s.size), box = boxOf(s).map(round);
-      helv ??= await doc.embedFont(StandardFonts.Helvetica);
-      const mark = `BT /Helv ${s.size} Tf ${rgb.join(' ')} rg ET`;
-      const look = ctx.stream(`${mark}\n${pdfOps(L, s.x1, s.y2, rgb)}\n${mark}`, {
-        Type: 'XObject', Subtype: 'Form', BBox: box, Resources: { Font: { Helv: helv.ref } },
-      });
-      dict = {
-        Subtype: 'FreeText', Rect: box, Contents: PDFHexString.fromText(s.text),
-        DA: PDFString.of(`/Helv ${s.size} Tf ${rgb.join(' ')} rg`), BS: { W: 0 }, AP: { N: ctx.register(look) },
-      };
-      extra = {};   // (for FreeText, /C would be a background fill)
-    } else if (s.type === 'highlight') {
-      const box = [
-        Math.min(...s.rects.map(r => r[0])), Math.min(...s.rects.map(r => r[1])),
-        Math.max(...s.rects.map(r => r[2])), Math.max(...s.rects.map(r => r[3])),
-      ].map(round);
-      const path = s.rects.map(([a, b, c, d]) => num(a, b, c - a, d - b) + ' re').join(' ');
-      const look = ctx.stream(`/GS0 gs ${rgb.join(' ')} rg ${path} f`, {
-        Type: 'XObject', Subtype: 'Form', BBox: box,
-        Resources: { ExtGState: { GS0: { Type: 'ExtGState', BM: 'Multiply' } } },   // ink shows through, like a marker
-      });
-      dict = {
-        Subtype: 'Highlight', Rect: box, AP: { N: ctx.register(look) },
-        QuadPoints: s.rects.flatMap(([a, b, c, d]) => [a, d, c, d, a, b, c, b]).map(round),
-      };
-    } else {
-      const { x1, y1, x2, y2, width: w } = s, h = w / 2;
-      const box = [x1 - h, y1 - h, x2 + h, y2 + h].map(round);
-      let path = num(x1, y1, x2 - x1, y2 - y1) + ' re';
-      if (s.type === 'ellipse') {   // four Bézier quarters
-        const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, rx = (x2 - x1) / 2, ry = (y2 - y1) / 2, kx = rx * 0.5523, ky = ry * 0.5523;
-        path = [
-          num(cx + rx, cy) + ' m',
-          num(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry) + ' c',
-          num(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy) + ' c',
-          num(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry) + ' c',
-          num(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy) + ' c h',
-        ].join(' ');
-      }
-      const paint = s.fill ? `${rgb.join(' ')} rg ${rgb.join(' ')} RG ${path} B` : `${rgb.join(' ')} RG ${path} S`;
-      const look = ctx.stream(`${w} w ${paint}`, { Type: 'XObject', Subtype: 'Form', BBox: box });
-      dict = { Subtype: s.type === 'rect' ? 'Square' : 'Circle', Rect: box, BS: { W: w }, AP: { N: ctx.register(look) }, ...(s.fill ? { IC: rgb } : {}) };
-    }
-    pg.node.addAnnot(ctx.register(ctx.obj({ Type: 'Annot', ...dict, ...extra, F: 4, T: PDFString.of(MARK) })));
+    if (pg) await marks.add(pg, s);
   }
 
   // Recognised text goes onto its pages as invisible text, so the copy can be searched and selected anywhere.
   const scanned = list.filter(e => e.doc === 'main' && ocrText.has(e.i));
   if (scanned.length) {
-    helv ??= await doc.embedFont(StandardFonts.Helvetica);
+    const helv = await marks.font();
     const clean = cleanWith(new Set(helv.getCharacterSet()));
     for (const e of scanned) {
       const pg = target.get(e.id);

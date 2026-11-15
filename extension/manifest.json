@@ -40,6 +40,7 @@
         "math.js",
         "textbox.js",
         "compress.js",
+        "annotations.js",
         "reader.html",
         "reader.js",
         "icons/*",
