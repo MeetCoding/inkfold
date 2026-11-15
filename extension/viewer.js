@@ -8,6 +8,7 @@ import { mergeLines } from './geometry.js';
 import { looksLikeMarkdown } from './paste.js';
 import { createHistory } from './history.js';
 import { createFind, joinItems } from './find.js';
+import { joinedPdf, shiftShape } from './join.js';
 
 // The viewer runs either on its own extension page, or inside a web PDF's tab (opened in place by
 // content.js, so the tab keeps its https:// address). Its own files always come from the extension.
@@ -54,12 +55,14 @@ let lineWidth = store.get('width', 2);
 let fillShapes = store.get('fill', false);   // new rectangles and ellipses: filled or just outlined
 // A few standard colours: light ones for the highlighter (ink shows through), strong ones for text, and for
 // shapes white as well (a filled white box covers something up).
+const CUT_RED = '#e5484d';   // the cutter's one colour
 const PALETTES = {
+  cut: [['Red', CUT_RED]],
   highlight: [['Yellow', '#ffd400'], ['Green', '#9be28f'], ['Blue', '#8fc7ff'], ['Pink', '#ff9ccb'], ['Orange', '#ffb561']],
   shape: [['Red', '#e5484d'], ['White', '#ffffff'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
   text: [['Red', '#e5484d'], ['Orange', '#e8590c'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
 };
-const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}) };
+const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}), cut: CUT_RED };
 if (colors.shape === '#e8590c') colors.shape = '#ffffff';   // orange left the shape colours; white took its place
 let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null, erasing = null, eraseHover = null;
 const imgs = new Map();         // image key -> { src: data URL, w, h (pixels), mime }
@@ -272,7 +275,7 @@ function makeView(e) {
   return p;
 }
 
-const kindOf = e => (e.doc === 'main' ? '' : e.doc.startsWith('pic') ? 'image' : 'note');   // pages added here
+const kindOf = e => (e.doc === 'main' ? '' : e.doc.startsWith('pic') ? 'image' : e.doc.startsWith('join') ? 'joined' : 'note');   // pages made here
 
 function layoutPages() {   // match the DOM to `entries`
   const live = new Set(entries.map(e => e.id));
@@ -1115,6 +1118,74 @@ function changePages(fn) {
   return true;
 }
 
+// Join page k and the one after it into one long page (join.js): the first above the second, each as you see it
+// (cropped, if it is), with their annotations. The pair becomes a page of its own, so Undo splits them again.
+async function joinPages(k) {
+  const a = pages[k], b = pages[k + 1];
+  hideSeam();
+  if (!a || !b || cropping || moving) return;
+  if (rotationOf(a) || rotationOf(b)) return say('Turned pages can’t be joined yet: turn them upright first ([ and ]).', { long: true });
+  finishEdit();
+  say('Joining…', true);
+  const id = loadId;
+  let made;
+  try {
+    const parts = await Promise.all([a, b].map(async p => ({
+      key: p.e.doc, index: p.e.i, box: shown(p), bytes: await bytesOf(docs.get(p.e.doc)),
+      ocr: p.e.doc === 'main' ? ocrText.get(p.e.i) : null,   // text read on a scanned page comes along
+    })));
+    made = await joinedPdf(await lib(), parts);
+  } catch (e) { return say('Couldn’t join those pages: ' + (e?.message || 'something went wrong') + '.', true); }
+  if (id !== loadId) return;
+  const key = 'join' + nextId++;
+  await loadDoc(key, made.bytes);
+  const at = entries.indexOf(a.e);
+  if (id !== loadId || at < 0 || entries[at + 1] !== b.e) return say('The pages changed meanwhile, so they weren’t joined.');
+  const e = { id: nextId++, doc: key, i: 0, rot: 0 };
+  changePages(() => {
+    entries.splice(at, 2, e);
+    for (const s of shapes) {
+      const by = s.page === a.id ? made.moves[0] : s.page === b.id ? made.moves[1] : null;
+      if (by) { s.page = e.id; shiftShape(s, by); }
+    }
+  });
+  textLayer(views.get(e.id));
+  sel = null;
+  repaint();
+  say(`Joined pages ${k + 1} and ${k + 2} into one long page.`, { action: { label: 'Undo', fn: undo }, long: true });
+}
+
+// The seam between two pages: with the pointer in the gap between them (one above the other), a small button there
+// joins them. (The page menu has it too: Join with the next page.)
+let seamK = -1, seamTimer = 0;
+function hideSeam() { clearTimeout(seamTimer); seamK = -1; $('seam').hidden = true; }
+function seamUnder(x, y) {
+  if (spread || moving || cropping || drag || editing || pages.length < 2) return -1;
+  for (let k = 0; k < pages.length - 1; k++) {
+    const a = pages[k].div.getBoundingClientRect(), b = pages[k + 1].div.getBoundingClientRect();
+    if (a.bottom > y + 4) return -1;
+    if (y >= a.bottom - 4 && y <= b.top + 4 && x >= Math.min(a.left, b.left) && x <= Math.max(a.right, b.right)) return k;
+  }
+  return -1;
+}
+addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch' || e.buttons) return;
+  if ($('seam').contains(e.target)) { clearTimeout(seamTimer); return; }
+  const k = e.target === $('pages') || e.target.closest?.('.page') ? seamUnder(e.clientX, e.clientY) : -1;
+  if (k < 0) { if (seamK >= 0 && !seamTimer) seamTimer = setTimeout(() => { seamTimer = 0; hideSeam(); }, 300); return; }
+  clearTimeout(seamTimer);
+  seamTimer = 0;
+  if (k === seamK) return;
+  seamK = k;
+  const a = pages[k].div.getBoundingClientRect(), b = pages[k + 1].div.getBoundingClientRect(), s = $('seam');
+  s.title = `Join pages ${k + 1} and ${k + 2} into one long page`;
+  s.style.left = (Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2 + 'px';
+  s.style.top = (a.bottom + b.top) / 2 + 'px';
+  s.hidden = false;
+}, { passive: true });
+addEventListener('scroll', () => { if (seamK >= 0) hideSeam(); }, { passive: true });
+$('seam').onclick = () => joinPages(seamK);
+
 function rotatePages(ids, delta) {
   return changePages(() => entries.forEach(e => { if (ids.has(e.id)) e.rot = (e.rot + delta + 360) % 360; }));
 }
@@ -1274,6 +1345,8 @@ function paint(p) {
     }
     if (s.type === 'text') return paintText(p, s, i, over);
     if (s.type === 'image') return paintImage(p, s, i, over);
+    if (s.type === 'strike') return paintStrike(p, s, over);
+    if (s.type === 'cross') return paintCross(p, s, i, over);
     const v = view(p, [s.x1, s.y1, s.x2, s.y2]), w = s.width * p.vp.scale;
     const [tag, geo] = s.type === 'rect'
       ? ['rect', { x: v.x, y: v.y, width: v.w, height: v.h }]
@@ -1285,6 +1358,24 @@ function paint(p) {
   p.hl.replaceChildren(...under);
   p.svg.replaceChildren(...over);
   if (editing?.p === p) placeEditor();
+}
+
+// The cutter on text: a line through the middle of each line of text (drawn along the text, on a turned page too).
+function paintStrike(p, s, over) {
+  for (const [a, b, c, d] of s.rects) {
+    const y = annotations.strikeY(b, d), [x1, y1] = p.vp.convertToViewportPoint(a, y), [x2, y2] = p.vp.convertToViewportPoint(c, y);
+    over.push(el('line', { class: s === eraseHover ? 'shape erasing' : 'shape', x1, y1, x2, y2, stroke: s.color, 'stroke-width': annotations.strikeWidth(d - b) * p.vp.scale, 'stroke-linecap': 'butt' }));
+    if (s === sel) { const v = view(p, [a, b, c, d]); over.push(el('rect', { class: 'outline', x: v.x - 2, y: v.y - 2, width: v.w + 4, height: v.h + 4 })); }
+  }
+}
+
+// The cutter anywhere else: an X from corner to corner of its box.
+function paintCross(p, s, i, over) {
+  const v = view(p, [s.x1, s.y1, s.x2, s.y2]), w = s.width * p.vp.scale;
+  const d = `M${v.x} ${v.y}L${v.x + v.w} ${v.y + v.h}M${v.x + v.w} ${v.y}L${v.x} ${v.y + v.h}`;
+  over.push(el('path', { d, class: s === eraseHover ? 'shape erasing' : 'shape', fill: 'none', stroke: s.color, 'stroke-width': w, 'stroke-linecap': 'round' }));
+  over.push(el('path', { d, class: 'hit', 'data-i': i, 'stroke-width': Math.max(w, 10) }));   // easier to grab
+  if (s === sel) grips(v, over);
 }
 
 // The selection frame and its four corner handles (0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right).
@@ -1607,7 +1698,14 @@ async function pasteTextBox(p, t) {
 // filled shapes, highlights and text boxes anywhere inside.
 function touches(s, x, y, tol) {
   const inBox = ([a, b, c, d], m) => x >= a - m && x <= c + m && y >= b - m && y <= d + m;
-  if (s.type === 'highlight') return s.rects.some(r => inBox(r, tol));
+  if (s.type === 'highlight' || s.type === 'strike') return s.rects.some(r => inBox(r, tol));
+  if (s.type === 'cross') {   // near either stroke of the X
+    const m = (s.width || 1) / 2 + tol, near = (ax, ay, bx, by) => {
+      const dx = bx - ax, dy = by - ay, t = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+      return Math.hypot(x - ax - t * dx, y - ay - t * dy) <= m;
+    };
+    return near(s.x1, s.y1, s.x2, s.y2) || near(s.x1, s.y2, s.x2, s.y1);
+  }
   const box = boxOf(s);
   if (s.type === 'text' || s.type === 'image') return inBox(box, tol);
   const m = (s.width || 1) / 2 + tol, [a, b, c, d] = box;
@@ -1892,9 +1990,19 @@ function pressPage(e, p) {
       if (!p.div.querySelector('.textLayer span')) say('This page has no selectable text (it may be a scanned image), so it can’t be highlighted. Draw a rectangle (R) instead.', { long: true });
     });
   }
+  // The cutter: pressed on text, it selects (and strikes through on release); anywhere else, it drags out an X.
+  if (tool === 'cut' && !e.button && !e.target.closest('.textLayer span, .textLayer br')) {
+    e.preventDefault();   // no text selection from here
+    const at = point(e, p), before = snapshot();
+    sel = { page: p.id, type: 'cross', x1: at[0], y1: at[1], x2: at[0], y2: at[1], color: CUT_RED, width: 2 };
+    shapes.push(sel);
+    drag = { anchor: at, fresh: true, p, before };
+    repaint();
+    return;
+  }
   if (e.button || tool !== 'select' || e.target.closest('.shapes')) return;
   const [x, y] = point(e, p);
-  pick = shapes.findLast(s => s.page === p.id && s.type === 'highlight'
+  pick = shapes.findLast(s => s.page === p.id && (s.type === 'highlight' || s.type === 'strike')
     && s.rects.some(([a, b, c, d]) => x >= a && x <= c && y >= b && y <= d)) ?? null;
   if (sel) select(null);
 }
@@ -1904,9 +2012,11 @@ function released() {
   if (pick && getSelection().isCollapsed) select(pick);
   pick = null;
   if (tool === 'highlight') setTimeout(highlightSelection);
+  if (tool === 'cut') setTimeout(() => highlightSelection('strike'));
 }
 
-function highlightSelection() {
+// The text selected becomes a highlight (or, with the cutter, is struck through): one box per line.
+function highlightSelection(type = 'highlight') {
   const s = getSelection();
   if (!s.rangeCount || s.isCollapsed) return;
   const range = s.getRangeAt(0), before = snapshot(), made = [];
@@ -1930,13 +2040,13 @@ function highlightSelection() {
       const [x1, y1] = p.vp.convertToPdfPoint(m.l, m.t), [x2, y2] = p.vp.convertToPdfPoint(m.r, m.b);
       return [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
     });
-    if (rects.length) made.push({ page: p.id, type: 'highlight', rects, color: colors.highlight });
+    if (rects.length) made.push({ page: p.id, type, rects, color: type === 'strike' ? CUT_RED : colors.highlight });
   }
   s.removeAllRanges();
   if (!made.length) return;
   shapes.push(...made);
   commit(before);
-  repaint();   // the highlighter stays on, ready for the next passage
+  repaint();   // the highlighter (or the cutter) stays on, ready for the next passage
 }
 
 /* ---------- edits ---------- */
@@ -1953,14 +2063,19 @@ function syncUndo() {   // the buttons are greyed out when there's nothing to un
   $('redo').disabled = !edits.canRedo;
 }
 
-const kind = () => { const t = sel ? sel.type : tool; return t === 'highlight' || t === 'text' ? t : 'shape'; };
+const kind = () => {
+  const t = sel ? sel.type : tool;
+  return t === 'highlight' || t === 'text' ? t : t === 'cut' || t === 'strike' || t === 'cross' ? 'cut' : 'shape';
+};
+// The cutter's marks are always red, at one thickness: nothing to style.
+const stylable = () => ((tool !== 'select' && tool !== 'eraser') || !!sel) && sel?.type !== 'image' && kind() !== 'cut';
 
 const palette = () => PALETTES[kind()];
 const curColor = () => (sel?.color ?? colors[kind()]).toLowerCase();
 
 function syncControls() {   // the colour and thickness boxes show the selection, or the defaults for the tool
   // With the select tool and nothing selected there's nothing to style, so the controls are hidden.
-  const styling = ((tool !== 'select' && tool !== 'eraser') || !!sel) && sel?.type !== 'image';
+  const styling = stylable();
   $('styleBox').hidden = $('styleSep').hidden = !styling;
   const pal = palette(), box = $('palette');
   const set = pal.map(([, c]) => c).join();
@@ -2057,9 +2172,9 @@ function pickTool(t) {
 
 // After anything is placed (a shape, highlight, image, text box, note or page), nothing stays selected and the
 // pointer tool is back, ready for the next thing; click what was placed to move, resize or change it.
-function placed() {
+function placed() {   // (the cutter stays on, like the highlighter)
   if (sel) select(null);
-  if (tool !== 'select') setTool('select');
+  if (tool !== 'select' && tool !== 'cut') setTool('select');
   syncControls();
   repaint();
 }
@@ -2073,6 +2188,7 @@ function setTool(t) {
   for (const b of document.querySelectorAll('button[data-tool]')) b.setAttribute('aria-pressed', b.dataset.tool === t);
   syncStatus();
   if (t === 'highlight') highlightSelection();   // text already selected? highlight it straight away
+  if (t === 'cut') highlightSelection('strike');
   syncControls();
 }
 
@@ -2495,6 +2611,9 @@ const ICONS = {
   note: '<svg viewBox="0 0 16 16"><path d="M3 1.8h6.5l3.5 3.5v8.9H3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 7.2v5M5.5 9.7h5" stroke="currentColor" stroke-width="1.4"/></svg>',
   move: '<svg viewBox="0 0 16 16"><path d="M8 1.8v12.4M5.5 4.3 8 1.8l2.5 2.5M5.5 11.7 8 14.2l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 8h3M10.5 8h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   crop: '<svg viewBox="0 0 16 16"><path d="M4.5 1.5v9.5a.5.5 0 0 0 .5.5h9.5M1.5 4.5h9.5a.5.5 0 0 1 .5.5v9.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  front: '<svg viewBox="0 0 16 16"><rect x="2" y="6" width="7.5" height="7.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.5"/><rect x="6.5" y="2.5" width="7.5" height="7.5" rx="1" fill="currentColor" fill-opacity=".85" stroke="currentColor" stroke-width="1.2"/></svg>',
+  back: '<svg viewBox="0 0 16 16"><rect x="6.5" y="2.5" width="7.5" height="7.5" rx="1" fill="currentColor" fill-opacity=".85" stroke="currentColor" stroke-width="1.2"/><rect x="2" y="6" width="7.5" height="7.5" rx="1" style="fill: var(--bar)" stroke="currentColor" stroke-width="1.2"/></svg>',
+  join: '<svg viewBox="0 0 16 16"><rect x="3.5" y="1.5" width="9" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="3.5" y="9.5" width="9" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 5.5v5M6.3 9 8 10.7 9.7 9M6.3 7 8 5.3 9.7 7" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   trash: '<svg viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
 };
 
@@ -2632,7 +2751,7 @@ function visibleArea() {
   if (r.bottom <= 0 || r.top >= innerHeight) return { top: 0, bottom: innerHeight };
   return r.top < innerHeight / 2 ? { top: Math.max(0, r.bottom), bottom: innerHeight } : { top: 0, bottom: Math.min(innerHeight, r.top) };
 }
-const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
+const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', cut: 'Cutter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
 // The pill, while the toolbar is hidden: the tool's icon, then what its keys pick (each with its key): the colours
 // (Shift+1…5), the line thickness (1, 2, 3) and outline or filled (R / O again) for shapes, the size (− +) for
 // text; then the page. The colours and thicknesses can be clicked too.
@@ -2645,8 +2764,7 @@ function syncStatus() {
   showPage();
 }
 function statusOptions() {
-  const styling = ((tool !== 'select' && tool !== 'eraser') || !!sel) && sel?.type !== 'image';
-  if (!styling) return [];
+  if (!stylable()) return [];
   const k = kind(), cur = curColor();
   const opt = (title, on, key, fn, ...kids) => {
     const b = el2('button', { type: 'button', tabindex: '-1', class: on ? 'opt on' : 'opt', title }, ...kids, el2('small', {}, key));
@@ -2841,34 +2959,69 @@ $('splitRanges').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault();
 
 // Right-click a page for its own menu. With text selected, or with Shift held, Chrome's own menu
 // (Copy, Search, Gemini…) shows instead.
-const MENU = [
+// Right-click menus: a page's, or an annotation's (when the click is on one). Each item: [icon, label, key, action,
+// disabled?]; the keys work while the menu is open.
+const PAGE_MENU = [
   ['left', 'Rotate left', '[', p => rotatePages(new Set([p.id]), -90)],
   ['right', 'Rotate right', ']', p => rotatePages(new Set([p.id]), 90)],
   ['note', 'Add note after this page', 'N', p => addNote(pages.indexOf(p))],
   ['move', 'Move page', 'M', p => startMove(p)],
   ['crop', 'Crop page', 'C', p => startCrop(p)],
+  ['join', 'Join with the next page', 'J', p => joinPages(pages.indexOf(p)), p => pages.indexOf(p) >= pages.length - 1],
   null,
-  ['trash', 'Delete page', 'Shift+Del', p => deletePages(new Set([p.id]))],
+  ['trash', 'Delete page', 'Shift+Del', p => deletePages(new Set([p.id])), () => pages.length < 2],
 ];
-let menuPage = null;
-$('menu').append(...MENU.map(m => {
-  if (!m) return document.createElement('hr');
-  const b = el2('button', { type: 'button', role: 'menuitem', class: m[0] === 'trash' ? 'danger' : '' }, m[1], el2('span', { class: 'key' }, m[2]));
-  b.insertAdjacentHTML('afterbegin', ICONS[m[0]]);
-  b.onclick = () => { closeMenu(); if (pages.includes(menuPage)) m[3](menuPage); };
-  return b;
-}));
-function openMenu(p, x, y) {
+const MARK_MENU = [
+  ['front', 'Bring to front', 'F', s => restack(s, 1), s => topmost(s, 1)],
+  ['back', 'Send to back', 'B', s => restack(s, -1), s => topmost(s, -1)],
+  null,
+  ['trash', 'Delete', 'Del', s => { select(s); remove(); }],
+];
+const MARK_NAMES = { rect: 'Rectangle', ellipse: 'Ellipse', highlight: 'Highlight', strike: 'Strike-through', cross: 'Cross', text: 'Text box', image: 'Picture' };
+let menuItems = PAGE_MENU, menuOf = null;   // the items on show, and the page or annotation they act on
+const menuLive = () => (menuItems === PAGE_MENU ? pages.includes(menuOf) : shapes.includes(menuOf));
+function fillMenu(items, target) {
+  menuItems = items;
+  menuOf = target;
+  $('menu').replaceChildren($('menuTitle'), ...items.map(m => {
+    if (!m) return document.createElement('hr');
+    const b = el2('button', { type: 'button', role: 'menuitem', class: m[0] === 'trash' ? 'danger' : '' }, m[1], el2('span', { class: 'key' }, m[2]));
+    b.insertAdjacentHTML('afterbegin', ICONS[m[0]]);
+    b.disabled = !!m[4]?.(target);
+    b.onclick = () => { closeMenu(); if (menuLive()) m[3](menuOf); };
+    return b;
+  }));
+}
+const menuMatch = e => menuItems.find(m => m && (m[2] === 'Shift+Del' ? e.key === 'Delete' && e.shiftKey
+  : m[2] === 'Del' ? e.key === 'Delete' || e.key === 'Backspace' : e.key.toLowerCase() === m[2].toLowerCase()));
+
+// Layers: annotations are drawn in the order they're kept (highlights always under the rest), and saved in it.
+// Is s already at the top (dir 1) or the bottom (dir -1) among those it can overlap on its page?
+function topmost(s, dir) {
+  const mine = shapes.filter(t => t.page === s.page && (t.type === 'highlight') === (s.type === 'highlight'));
+  return (dir > 0 ? mine.at(-1) : mine[0]) === s;
+}
+function restack(s, dir) {
+  if (topmost(s, dir)) return;
+  commit(snapshot());
+  shapes.splice(shapes.indexOf(s), 1);
+  if (dir > 0) shapes.push(s); else shapes.unshift(s);
+  select(s);
+  say(dir > 0 ? 'Brought to front.' : 'Sent to back.');
+}
+
+// target: an annotation (its own menu) or else the page p.
+function openMenu(p, x, y, target = null) {
   const m = $('menu');
-  menuPage = p;
-  $('menuTitle').textContent = `Page ${pages.indexOf(p) + 1} of ${pages.length}${kindOf(p.e) ? ' · ' + kindOf(p.e) : ''}`;
-  m.querySelector('.danger').disabled = pages.length < 2;
+  fillMenu(target ? MARK_MENU : PAGE_MENU, target ?? p);
+  $('menuTitle').textContent = target ? `${MARK_NAMES[target.type] ?? 'Annotation'} · page ${pages.indexOf(p) + 1}`
+    : `Page ${pages.indexOf(p) + 1} of ${pages.length}${kindOf(p.e) ? ' · ' + kindOf(p.e) : ''}`;
   m.style.left = m.style.top = '0px';
   m.showPopover();
   const r = m.getBoundingClientRect();
   m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
   m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
-  m.querySelector('button').focus();
+  m.querySelector('button:not(:disabled)')?.focus();
 }
 $('pages').addEventListener('contextmenu', e => {
   const p = e.target.closest('.page')?.p;
@@ -2877,8 +3030,15 @@ $('pages').addEventListener('contextmenu', e => {
   if (!s.isCollapsed && s.toString().trim()) return;
   e.preventDefault();
   let { clientX: x, clientY: y } = e;
-  if (!x && !y) { const r = p.div.getBoundingClientRect(); x = r.left + 24; y = Math.max(r.top, 60) + 24; }   // the menu key
-  openMenu(p, x, y);
+  if (!x && !y) {   // the menu key: the selected annotation's menu, or the page's
+    const r = p.div.getBoundingClientRect();
+    return openMenu(p, r.left + 24, Math.max(r.top, visibleArea().top) + 24, sel && sel.page === p.id ? sel : null);
+  }
+  // On an annotation (its grab area, or anywhere it's drawn): its own menu, with it selected.
+  const hit = e.target.closest?.('[data-i]'), [px, py] = point(e, p);
+  const mark = (hit ? shapes[+hit.dataset.i] : null) ?? shapes.findLast(s => s.page === p.id && touches(s, px, py, 4 / p.vp.scale)) ?? null;
+  if (mark) { finishEdit(); select(mark); }
+  openMenu(p, x, y, mark);
 });
 function menuKey(e) {   // arrow keys move through the menu, even if focus has wandered off it
   const items = [...$('menu').querySelectorAll('button:not(:disabled)')], i = items.indexOf(document.activeElement);
@@ -2928,7 +3088,7 @@ addEventListener('resize', () => {
 
 // Every shortcut, in one place. Keys listed in the buttons' labels and in the ? sheet.
 const KEYS = {
-  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'r': () => pickTool('rect'), 'o': () => pickTool('ellipse'), 't': () => setTool('text'), 'i': () => addImage(),
+  'v': () => setTool('select'), 'h': () => setTool('highlight'), 'x': () => setTool('cut'), 'r': () => pickTool('rect'), 'o': () => pickTool('ellipse'), 't': () => setTool('text'), 'i': () => addImage(),
   '-': () => setTextSize(-1), '=': () => setTextSize(1), '+': () => setTextSize(1),
   'c': nextColor,
   '1': () => setWidth(1), '2': () => setWidth(2), '3': () => setWidth(4),
@@ -2986,9 +3146,9 @@ addEventListener('keydown', e => {
     else if (e.key === 'Escape') { e.preventDefault(); endCrop(); }
     return;
   }
-  if ($('menu').matches(':popover-open')) {   // the menu's own shortcuts act on its page
-    const m = MENU.find(m => m && (m[2] === 'Shift+Del' ? e.key === 'Delete' && e.shiftKey : e.key.toLowerCase() === m[2].toLowerCase()));
-    if (m && !(m[0] === 'trash' && pages.length < 2)) { e.preventDefault(); $('menu').hidePopover(); return m[3](menuPage); }
+  if ($('menu').matches(':popover-open')) {   // the menu's own shortcuts act on its page or annotation
+    const m = menuMatch(e);
+    if (m && !m[4]?.(menuOf) && menuLive()) { e.preventDefault(); $('menu').hidePopover(); return m[3](menuOf); }
     if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
     else menuKey(e);
     return;

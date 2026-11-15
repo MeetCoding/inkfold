@@ -6,9 +6,11 @@
 // In memory, in PDF points (y pointing up), tied to a page entry id:
 //   rect, ellipse  { page, type, x1, y1, x2, y2, color, width, fill? }   (the box is the centre line of the stroke)
 //   highlight      { page, type, rects: [[x1, y1, x2, y2], …], color }   (one box per line of text)
+//   strike         { page, type, rects, color }                         (the cutter on text: a line through each box)
+//   cross          { page, type, x1, y1, x2, y2, color, width }         (the cutter anywhere else: an X across the box)
 //   text           { page, type, x1, y1, x2, y2, text, size, color }    (x1, y2: the top-left corner)
 //   image          { page, type, x1, y1, x2, y2, img }                  (img: a key into the viewer's pictures)
-// In the file: Square, Circle, Highlight, FreeText and Stamp annotations, authored (/T) "Inkfold", each with its
+// In the file: Square, Circle, Highlight, StrikeOut, Ink (the cross), FreeText and Stamp annotations, authored (/T) "Inkfold", each with its
 // own appearance stream so that every viewer draws it the same way.
 
 export const AUTHOR = 'Inkfold';
@@ -32,6 +34,20 @@ function outline(s) {
     num(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy) + ' c h',
   ].join(' ');
 }
+
+// The bounding box of some line boxes, and their QuadPoints (each box's corners: top-left, top-right, bottom-left,
+// bottom-right), as text-markup annotations want them.
+const span = r => [Math.min(...r.map(b => b[0])), Math.min(...r.map(b => b[1])), Math.max(...r.map(b => b[2])), Math.max(...r.map(b => b[3]))].map(round);
+const quads = r => r.flatMap(([a, b, c, d]) => [a, d, c, d, a, b, c, b]).map(round);
+function readQuads(a) {   // pdf.js normalises each quad to TL, TR, BL, BR
+  const q = a.quadPoints, rects = [];
+  for (let k = 0; k < q.length; k += 8) rects.push([q[k], q[k + 5], q[k + 2], q[k + 1]]);
+  return rects;
+}
+// A strike-through line for a line of text whose box runs from b up to d: how thick, and how high (through the
+// middle of the lower-case letters, a little below the middle of the box, which takes in the descenders too).
+export const strikeWidth = h => Math.max(0.75, h * 0.08);
+export const strikeY = (b, d) => b + (d - b) * 0.4;
 
 const box = {   // rectangles and ellipses: Square and Circle annotations
   write(s, w) {
@@ -61,25 +77,53 @@ export const KINDS = {
   highlight: {
     subtype: 'Highlight',
     write(s, w) {
-      const rgb = rgbOf(s.color), r = s.rects;
-      const rect = [
-        Math.min(...r.map(b => b[0])), Math.min(...r.map(b => b[1])), Math.max(...r.map(b => b[2])), Math.max(...r.map(b => b[3])),
-      ].map(round);
+      const rgb = rgbOf(s.color), r = s.rects, rect = span(r);
       const path = r.map(([a, b, c, d]) => num(a, b, c - a, d - b) + ' re').join(' ');
       const look = w.ctx.stream(`/GS0 gs ${rgb.join(' ')} rg ${path} f`, {
         Type: 'XObject', Subtype: 'Form', BBox: rect,
         Resources: { ExtGState: { GS0: { Type: 'ExtGState', BM: 'Multiply' } } },   // ink shows through, like a marker
       });
       return {
-        Subtype: 'Highlight', Rect: rect, AP: { N: w.ctx.register(look) }, C: rgb,
-        QuadPoints: r.flatMap(([a, b, c, d]) => [a, d, c, d, a, b, c, b]).map(round),
+        Subtype: 'Highlight', Rect: rect, AP: { N: w.ctx.register(look) }, C: rgb, QuadPoints: quads(r),
       };
     },
     read(a, page) {
       if (!a.quadPoints) return null;
-      const q = a.quadPoints, rects = [];   // pdf.js normalises each quad to TL, TR, BL, BR
-      for (let k = 0; k < q.length; k += 8) rects.push([q[k], q[k + 5], q[k + 2], q[k + 1]]);
-      return { shape: { page, type: 'highlight', rects, color: hexOf(a.color) } };
+      return { shape: { page, type: 'highlight', rects: readQuads(a), color: hexOf(a.color) } };
+    },
+  },
+
+  // The cutter on text: a StrikeOut annotation, a line through the middle of each line of text.
+  strike: {
+    subtype: 'StrikeOut',
+    write(s, w) {
+      const rgb = rgbOf(s.color), r = s.rects, rect = span(r);
+      const lines = r.map(([a, b, c, d]) => `${round(strikeWidth(d - b))} w ${num(a, strikeY(b, d))} m ${num(c, strikeY(b, d))} l S`).join(' ');
+      const look = w.ctx.stream(`${rgb.join(' ')} RG ${lines}`, { Type: 'XObject', Subtype: 'Form', BBox: rect });
+      return { Subtype: 'StrikeOut', Rect: rect, AP: { N: w.ctx.register(look) }, C: rgb, QuadPoints: quads(r) };
+    },
+    read(a, page) {
+      if (!a.quadPoints) return null;
+      return { shape: { page, type: 'strike', rects: readQuads(a), color: hexOf(a.color) } };
+    },
+  },
+
+  // The cutter anywhere else: an X from corner to corner, as an Ink annotation of two strokes.
+  cross: {
+    subtype: 'Ink',
+    write(s, w) {
+      const rgb = rgbOf(s.color), h = s.width / 2, { x1, y1, x2, y2 } = s;
+      const rect = [x1 - h, y1 - h, x2 + h, y2 + h].map(round);
+      const look = w.ctx.stream(`${rgb.join(' ')} RG ${s.width} w 1 J ${num(x1, y2)} m ${num(x2, y1)} l S ${num(x1, y1)} m ${num(x2, y2)} l S`,
+        { Type: 'XObject', Subtype: 'Form', BBox: rect });
+      return {
+        Subtype: 'Ink', Rect: rect, BS: { W: s.width }, C: rgb, AP: { N: w.ctx.register(look) },
+        InkList: [[x1, y2, x2, y1].map(round), [x1, y1, x2, y2].map(round)],
+      };
+    },
+    read(a, page) {
+      const width = a.borderStyle?.width || 1, [x1, y1, x2, y2] = a.rect, h = width / 2;
+      return { shape: { page, type: 'cross', x1: x1 + h, y1: y1 + h, x2: x2 - h, y2: y2 - h, color: hexOf(a.color), width } };
     },
   },
 

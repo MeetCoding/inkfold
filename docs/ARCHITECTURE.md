@@ -18,6 +18,7 @@ annotations.js     The annotation file format: write and read each kind (KINDS r
 save.js            The PDF that Save, Split and Merge write (page order, rotation, crop, OCR text)  [Node-tested]
 history.js         Undo and redo, kept as differences                                              [Node-tested]
 find.js            Find: the box, matching, lighting matches up (pure parts tested)                 [Node-tested]
+join.js            Two pages as one long page, as a small PDF of its own                            [Node-tested]
 pages.js           Page ranges as typed ("2-4, 7, 10-end")                                         [Node-tested]
 geometry.js        Merging selected text's word boxes into lines, for highlights                   [Node-tested]
 paste.js           Is this Markdown?                                                               [Node-tested]
@@ -27,7 +28,7 @@ math.js            LaTeX -> vector paths (MathJax)
 compress.js        Smaller copies: re-encodes big images, compresses streams
 ```
 
-The seven modules marked *Node-tested* have no browser dependencies. They start with `// @ts-check` and are
+The eight modules marked *Node-tested* have no browser dependencies. They start with `// @ts-check` and are
 type-checked by `npm run check`.
 
 ### State in the viewer

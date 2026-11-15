@@ -64,18 +64,10 @@ export async function buildPdf(L, { list, shapes, bytesOf, images, ocrText = new
   const scanned = list.filter(e => e.doc === 'main' && ocrText.has(e.i));
   if (scanned.length) {
     const helv = await marks.font();
-    const clean = cleanWith(new Set(helv.getCharacterSet()));
     for (const e of scanned) {
       const pg = target.get(e.id);
       pg.node.wrapContentStreams(ctx.register(ctx.stream('q')), ctx.register(ctx.stream('Q')));   // our text starts from a clean state
-      for (const it of ocrText.get(e.i)) {
-        const t = clean(it.str);
-        const [a, b, , , x, y] = it.transform, size = Math.hypot(a, b), natural = t.trim() ? helv.widthOfTextAtSize(t, size) : 0;
-        if (!natural || size < 1) continue;
-        pg.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible), setCharacterSqueeze(+(100 * it.width / natural).toFixed(2)));
-        pg.drawText(t, { x, y, size, font: helv, rotate: radians(Math.atan2(b, a)) });
-        pg.pushOperators(popGraphicsState());
-      }
+      invisibleText(L, pg, ocrText.get(e.i), helv);
     }
   }
 
@@ -102,4 +94,19 @@ export async function buildPdf(L, { list, shapes, bytesOf, images, ocrText = new
   for (const [ref] of ctx.enumerateIndirectObjects()) if (!seen.has(ref.toString())) ctx.delete(ref);
 
   return doc.save({ updateFieldAppearances: false });
+}
+
+// Text recognised on a page (pdf.js text items, in its points), drawn onto pg (a pdf-lib page) as invisible text in
+// Helvetica, each item squeezed to its measured width, moved by [dx, dy]: searchable and selectable in any viewer.
+export function invisibleText(L, pg, items, helv, [dx, dy] = [0, 0]) {
+  const { pushGraphicsState, popGraphicsState, setTextRenderingMode, TextRenderingMode, setCharacterSqueeze, radians } = L;
+  const clean = cleanWith(new Set(helv.getCharacterSet()));
+  for (const it of items) {
+    const t = clean(it.str);
+    const [a, b, , , x, y] = it.transform, size = Math.hypot(a, b), natural = t.trim() ? helv.widthOfTextAtSize(t, size) : 0;
+    if (!natural || size < 1) continue;
+    pg.pushOperators(pushGraphicsState(), setTextRenderingMode(TextRenderingMode.Invisible), setCharacterSqueeze(+(100 * it.width / natural).toFixed(2)));
+    pg.drawText(t, { x: x + dx, y: y + dy, size, font: helv, rotate: radians(Math.atan2(b, a)) });
+    pg.pushOperators(popGraphicsState());
+  }
 }

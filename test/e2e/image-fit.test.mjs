@@ -18,7 +18,8 @@ before(async () => {
 after(async () => { await chrome?.close(); await server?.close(); });
 
 async function addPicture(page) {
-  const [chooser] = await Promise.all([page.waitForFileChooser(), page.keyboard.press('i')]);
+  await pause(300);   // (settled after the resize)
+  const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 10000 }), page.click('#addImage')]);
   await chooser.accept([tall]);
   await page.waitForSelector('#magic:popover-open .acts button');
   await page.click('#magic .acts button.primary');   // "Add to page …"

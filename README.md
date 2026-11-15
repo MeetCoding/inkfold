@@ -16,6 +16,7 @@
 ## Features
 
 - **Highlighter** that follows the lines of real text, in any colour.
+- **Cutter** (<kbd>X</kbd>): drag across text to strike it through in red; drag anywhere else to cross out that area with a red X. Saved as standard strike-out and ink annotations.
 - **Rectangles and ellipses** to mark up figures, tables or anything else. Move and resize them any time.
 - **Text boxes** with **LaTeX**: press <kbd>T</kbd>, click and type. Put math between `$` signs (`$\frac{a}{b}$`) and it's typeset as you finish. Pick any colour and size; the font is Helvetica, so the box looks the same in every PDF viewer.
 - **Markdown notes**: press <kbd>N</kbd> and type a note (or paste copied Markdown with Magic paste), and a new page with your formatted note appears after the current one. The page is as wide as the one before it and exactly as tall as the note. Headings, lists, checkboxes, tables, code, quotes and links all work.
@@ -73,6 +74,8 @@ Coming soon.
 | Change pages | Right-click a page to rotate it, delete it, move it, crop it or add a note after it. For several pages, press <kbd>P</kbd> (or the gear button) for the Pages and file panel and type a range. (With text selected, or holding <kbd>Shift</kbd>, right-click shows Chrome's own menu.) |
 | Move a page | Right-click it and choose **Move page** (or press <kbd>M</kbd> over it). The page lifts and a small copy of it follows the pointer; the two pages either side of where it would go move apart, a blue "Page 2 goes here" marker sits in the gap, and the copy says where ("Page 2 → between 5 and 6"). Click to drop it there. The window scrolls when you near its top or bottom edge. Arrow keys move it too, <kbd>Enter</kbd> drops, <kbd>Esc</kbd> cancels, <kbd>Ctrl</kbd>+<kbd>Z</kbd> puts it back. |
 | Crop a page | Right-click it and choose **Crop page** (or press <kbd>C</kbd> in that menu). The whole page shows, with a box: drag its corners or edges to resize it, inside it to move it, or outside it to draw a new one. Drag it out past the page (up to half the page's size on each side) to add white space: the page grows, for notes in the margin or to frame a picture. **Trim margins** shrinks it to what's printed on the page; **Whole page** resets it; **All pages** crops every page of the same size the same way. <kbd>Enter</kbd> (or **Crop**) crops, <kbd>Esc</kbd> cancels, <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings the page back. Saved copies keep the whole page, with the crop set as its crop box, so other viewers show it cropped too. |
+| Join pages | Move the pointer into the gap between two pages and click **Join pages** (or right-click the upper one and choose **Join with the next page**, <kbd>J</kbd> in that menu). They become one long page, the first above the second, as you see them (cropped, if they are), with their annotations and any text Inkfold read on them. Pages that are turned can't be joined. <kbd>Ctrl</kbd>+<kbd>Z</kbd> splits them again. |
+| Layers | Right-click a shape, text box, picture or mark for its menu: **Bring to front** (<kbd>F</kbd>), **Send to back** (<kbd>B</kbd>) or **Delete**. Saved copies stack them the same way. Highlights always stay under the rest. |
 | Split or extract | In the Pages and file panel, type ranges such as `1-3, 4-8, 9-end`, then press **Split into files** (Enter) or **Save as one PDF** (all the ranges, in the order typed, in one new file). For separate files, a save dialog opens for each, already named (`notes (pages 1-3).pdf`) and in the same folder as the last, so it's mostly just Enter. |
 | Merge | In the Pages and file panel, **Add PDFs** (several at once, or drop them on the panel). Drag the grips (or focus one and press <kbd>↑</kbd> <kbd>↓</kbd>) to put them in order; the open PDF, with your changes, is in the list too. **Merge and save** asks where to save the new file. The open PDF can't be taken out of the list, and rows can only be dragged within it. |
 | Zoom | − / + step through the presets. Click the percentage for a card with Fit width, Fit page, a zoom slider and preset buttons. |
@@ -163,6 +166,7 @@ extension/          The extension itself (load this folder in Chrome)
   save.js           Writes the PDF for Save, Split and Merge
   history.js        Undo and redo
   find.js           Find (Ctrl+F)
+  join.js           Joining two pages into one long page
   pages.js, geometry.js, paste.js   Small pure helpers (page ranges, highlight lines, Markdown detection)
   notes.js          Markdown -> PDF pages
   math.js           LaTeX -> vector paths (via MathJax)

@@ -22,6 +22,7 @@
     "extension/pages.js",
     "extension/geometry.js",
     "extension/paste.js",
-    "extension/find.js"
+    "extension/find.js",
+    "extension/join.js"
   ]
 }

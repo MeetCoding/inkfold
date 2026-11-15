@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 2.19.0: toolbar at the bottom, the cutter, joining pages, a smaller download
 
+- **Cutter** (X): drag across text to strike it through in red, or anywhere else to cross out that area with a red X.
+  It stays on for the next mark, and is saved as standard StrikeOut and Ink annotations.
+- **Join two pages into one long page**: move the pointer into the gap between them and click Join pages, or use
+  Join with the next page in a page's right-click menu. Annotations, crops and recognised text come along.
+- **Layers**: right-click a shape, text box, picture or mark to bring it to front, send it to back, or delete it.
 - **Crop can add white space**: drag the crop box out past the page (up to half its size on each side) and the
   page grows, with white space there, on screen and in saved copies.
 - **Pictures fit the window**: a picture added to a page is sized and placed so all four corners are in view, in

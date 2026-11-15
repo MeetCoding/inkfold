@@ -34,6 +34,8 @@ export async function launch() {
   const id = new URL(sw.url()).host;
   const worker = await sw.worker();
   await worker.evaluate(() => chrome.storage.local.set({ welcomed: true }));   // no first-run dialog
+  // (Saves are downloads here, see open(). Chrome lets a site make one download without asking, then asks: so a
+  // test file saves from one tab only, or launches a browser per test.)
   // The welcome tab opened on install isn't needed.
   for (const p of await browser.pages()) if (p.url().includes('?welcome')) await p.close();
 

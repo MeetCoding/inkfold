@@ -17,6 +17,8 @@ const SHAPES = [
   { page: 1, type: 'ellipse', x1: 100, y1: 300, x2: 220, y2: 360, color: '#2f6fe0', width: 4 },
   { page: 1, type: 'highlight', rects: [[72, 640, 300, 655], [72, 616, 250, 631]], color: '#ffd400' },
   { page: 1, type: 'text', x1: 80, y1: 500, x2: 80, y2: 500, text: 'Hello, PDF', size: 14, color: '#2f9e44' },
+  { page: 1, type: 'strike', rects: [[72, 592, 280, 607]], color: '#e5484d' },
+  { page: 1, type: 'cross', x1: 300, y1: 200, x2: 380, y2: 260, color: '#e5484d', width: 2 },
   { page: 2, type: 'image', x1: 50, y1: 50, x2: 110, y2: 90, img: 'p' },
   { page: 2, type: 'image', x1: 150, y1: 50, x2: 190, y2: 80, img: 'j' },
 ];
@@ -56,7 +58,7 @@ test('every kind survives a save and reopen', async () => {
     const got = shapes[k];
     assert.equal(got.type, want.type);
     assert.equal(got.page, want.page);
-    if (want.type === 'highlight') {
+    if (want.type === 'highlight' || want.type === 'strike') {
       assert.equal(got.color, want.color);
       assert.equal(got.rects.length, want.rects.length);
       got.rects.forEach((r, i) => r.forEach((v, j) => near(v, want.rects[i][j], 'highlight box')));
@@ -94,7 +96,7 @@ test('files from the earlier name (“PDF Shapes”) are read too, and other aut
   const a = { subtype: 'Square', rect: [0, 0, 10, 10], color: [255, 0, 0], borderStyle: { width: 2 } };
   assert.equal(read({ ...a, titleObj: { str: 'PDF Shapes' } }, 1).shape.type, 'rect');
   assert.equal(read({ ...a, titleObj: { str: 'Acrobat' } }, 1), null);
-  assert.equal(read({ ...a, subtype: 'Ink', titleObj: { str: AUTHOR } }, 1), null);
+  assert.equal(read({ ...a, subtype: 'Polygon', titleObj: { str: AUTHOR } }, 1), null);
 });
 
 test('an image whose picture is gone is left out, not written broken', async () => {

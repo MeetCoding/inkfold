@@ -175,16 +175,17 @@ main.spread { display: grid; grid-template-columns: repeat(2, max-content); just
 #fills button svg :is(rect, ellipse) { transition: fill-opacity .15s; }
 button[data-tool="rect"] rect, button[data-tool="ellipse"] ellipse { transition: fill .15s; }
 body[data-fill="true"] button[data-tool="rect"] rect, body[data-fill="true"] button[data-tool="ellipse"] ellipse { fill: currentColor; fill-opacity: .9; }
-body[data-tool="select"] .shapes, body[data-tool="highlight"] .shapes { pointer-events: none; cursor: auto; touch-action: auto; }
+body[data-tool="select"] .shapes, body[data-tool="highlight"] .shapes, body[data-tool="cut"] .shapes { pointer-events: none; cursor: auto; touch-action: auto; }
 body[data-tool="select"] .hit { cursor: move; }
-body[data-tool="highlight"] .shapes * { pointer-events: none; }
-body[data-tool="highlight"] .textLayer :is(span, br) { cursor: text; }
+body:is([data-tool="highlight"], [data-tool="cut"]) .shapes * { pointer-events: none; }
+body:is([data-tool="highlight"], [data-tool="cut"]) .textLayer :is(span, br) { cursor: text; }
+body[data-tool="cut"] .page { cursor: crosshair; }   /* the cutter: off the text, it drags out an X */
 /* Text boxes */
 .shapes .text { pointer-events: none; }
 .shapes .thit { fill: transparent; stroke: none; pointer-events: all; }
 body[data-tool="text"] .shapes { cursor: text; }
 body[data-tool="text"] .thit { cursor: text; }
-body[data-tool="highlight"] .thit, body[data-tool="highlight"] .ihit { pointer-events: none; }
+body:is([data-tool="highlight"], [data-tool="cut"]) :is(.thit, .ihit) { pointer-events: none; }
 .shapes .image { pointer-events: none; }
 .shapes .ihit { fill: transparent; stroke: none; pointer-events: all; }
 body[data-tool="select"] .ihit { cursor: move; }
@@ -656,3 +657,14 @@ body.barless.reveal #status { opacity: 0; }
 #status .size { gap: 5px; color: var(--ink); }
 #status .size small { color: var(--dim); font-size: 10px; }
 body.barless:not(.reveal) #toast { bottom: 46px; }   /* clear of the pill in the corner */
+
+/* The button in the gap between two pages that joins them into one long page */
+#seam {
+  position: fixed; z-index: 4; display: flex; align-items: center; gap: 5px; width: auto; height: 26px; padding: 0 11px 0 8px; white-space: nowrap;
+  translate: -50% -50%; font-size: 12px; font-weight: 600; color: var(--bar); background: var(--ink);
+  border-radius: 999px; box-shadow: var(--shadow); animation: seam-in .14s ease-out;
+}
+#seam[hidden] { display: none; }
+#seam:hover { background: var(--accent); color: #fff; }
+#seam svg { width: 13px; height: 13px; }
+@keyframes seam-in { from { opacity: 0; scale: .9; } }
