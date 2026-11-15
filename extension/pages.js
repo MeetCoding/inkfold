@@ -1,3 +1,4 @@
+// @ts-check
 // Page ranges as people type them, for Delete, Rotate and Split in the Pages and file panel.
 
 // "2-4, 7, 10-end" -> [{ label: '2-4', idx: [1, 2, 3] }, { label: '7', idx: [6] }, …]

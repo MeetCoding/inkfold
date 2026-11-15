@@ -1,3 +1,4 @@
+// @ts-check
 // Writing the PDF that Save, Split and Merge produce. No browser APIs here, so it runs (and is tested) under Node.
 import * as annotations from './annotations.js';
 import { layout, pdfOps, cleanWith } from './textbox.js';

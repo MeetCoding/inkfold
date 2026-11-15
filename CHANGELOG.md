@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **A smaller download**: the text recognition models now store their weights at half precision, which takes the
+  extension from about 18 MB to under 12 MB. They read text exactly as before.
+- Under the hood: the annotation file format, saving and undo have modules of their own (`annotations.js`,
+  `save.js`, `history.js`), with unit tests, and the extension is tested in a real browser on every push. Undo
+  now keeps only what each step changed, rather than a copy of every annotation per step.
+
 ## 2.18.0: hide the toolbar; Magic paste notices copies made beside the PDF
 
 - **Hidden toolbar** (Shift+H, or the new button next to full screen): the toolbar slides away and the pages get the whole window. Touch the top edge with the pointer and it slides back; it stays while you use it (and while a card opened from it is open), then slides away again when you move down. Meanwhile a small pill in the top-left corner shows the current tool and the page you're on. Inkfold remembers the choice; Shift+H or the button shows the toolbar for good.

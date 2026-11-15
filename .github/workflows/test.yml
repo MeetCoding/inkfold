@@ -1,0 +1,26 @@
+# Checks every push and pull request: types (npm run check), unit tests under Node, and the browser tests, which
+# load the unpacked extension in Chrome for Testing (branded Chrome no longer loads unpacked extensions this way).
+name: Test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Install Chrome for Testing
+        run: |
+          out=$(npx --yes @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/browsers")
+          echo "CHROME_PATH=$(echo "$out" | tail -1 | cut -d' ' -f2-)" >> "$GITHUB_ENV"
+      - run: npm run test:e2e

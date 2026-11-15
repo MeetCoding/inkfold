@@ -1,3 +1,4 @@
+// @ts-check
 // Geometry of selected text.
 
 // Word boxes ({ l, t, r, b }, on-screen pixels with y pointing down) that sit on the same line become one box per line, so a highlight is one bar per

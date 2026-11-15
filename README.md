@@ -158,15 +158,20 @@ extension/          The extension itself (load this folder in Chrome)
   ocr/              Text recognition (OCR): PaddleOCR pipeline (paddle.js), its worker, and the models
   compress.js       Makes a smaller copy of a PDF (image re-encoding, stream compression)
   viewer.html/.css  The viewer UI
-  viewer.js         Viewer, annotations, page operations, saving and splitting
+  viewer.js         The viewer: pages on screen, tools, panels, find, OCR scheduling
+  annotations.js    The annotation file format: how each kind is saved and read back
+  save.js           Writes the PDF for Save, Split and Merge
+  history.js        Undo and redo
+  pages.js, geometry.js, paste.js   Small pure helpers (page ranges, highlight lines, Markdown detection)
   notes.js          Markdown -> PDF pages
   math.js           LaTeX -> vector paths (via MathJax)
   textbox.js        Text boxes: layout, on-screen SVG and PDF drawing
   icons/
   lib/              Bundled third-party libraries (see THIRD_PARTY_NOTICES.md)
 store/              Chrome Web Store screenshots and promo images
-docs/               Store listing text and review notes
-scripts/            Packaging
+docs/               Store listing text, review notes, ARCHITECTURE.md
+scripts/            Packaging, size report, OCR model conversion and checks
+test/               Unit tests (Node) and browser tests (the extension in headless Chrome)
 PRIVACY.md          Privacy policy
 ```
 
@@ -175,6 +180,10 @@ PRIVACY.md          Privacy policy
 There is no build step: the extension is plain HTML, CSS and JavaScript modules.
 
 - Edit files in `extension/`, then click the reload icon on Inkfold's card in `chrome://extensions`.
+- Tests and checks need Node 22 and `npm install` (development tools only; the extension has no dependencies):
+  `npm test` (unit tests), `npm run test:e2e` (browser tests; set `CHROME_PATH` to Chrome for Testing, from
+  `npx @puppeteer/browsers install chrome@stable`), `npm run check` (types), `npm run size`. See
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - `scripts/package.sh` creates `dist/inkfold-<version>.zip`, ready to upload to the Chrome Web Store.
 - Releases: add a `## <version>: <title>` section to [CHANGELOG.md](CHANGELOG.md), then push a `v<version>` tag. The Release workflow builds the zip from that tag and publishes the release with those notes. Running the workflow by hand publishes any tag that has no release yet.
 - To update a bundled library, replace its files in `extension/lib/` with the same files from its npm package (`pdfjs-dist`, `pdf-lib`, `mathjax@3`) and update the versions in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

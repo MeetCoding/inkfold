@@ -1,3 +1,4 @@
+// @ts-check
 // Inkfold's annotations as they are stored in a PDF: how each kind is written when saving, and how it is read
 // back when the file is opened again, so it stays editable. One entry per kind in KINDS; nothing else needs to
 // know the file format. (Drawing them on screen is still done by viewer.js.)
@@ -189,7 +190,11 @@ export async function readDetails(lib, bytes, wanted) {
   const { PDFDocument, PDFRef, PDFName, PDFDict, PDFArray, decodePDFRawStream } = lib, N = PDFName.of;
   let ctx = null;
   try { ctx = (await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true })).context; } catch {}
-  const annot = id => { const m = /^(\d+)R(\d*)$/.exec(id); return ctx.lookup(PDFRef.of(+m[1], +(m[2] || 0)), PDFDict); };
+  const annot = id => {
+    const m = /^(\d+)R(\d*)$/.exec(id);
+    if (!m || !ctx) throw new Error('not found');   // (each caller catches)
+    return ctx.lookup(PDFRef.of(+m[1], +(m[2] || 0)), PDFDict);
+  };
   const pictures = [];
   for (const { shape, id, details } of wanted) {
     if (details === 'fill') {

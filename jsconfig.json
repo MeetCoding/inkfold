@@ -1,0 +1,25 @@
+{
+  // Type checking without a build step: TypeScript reads the plain JavaScript (and its JSDoc comments) and reports
+  // mistakes; nothing is compiled. Run with `npm run check`. Only files that start with // @ts-check are checked;
+  // the ones listed here do. viewer.js, notes.js, math.js and textbox.js don't yet.
+  "compilerOptions": {
+    "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
+    "target": "es2023",
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom"],
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true
+  },
+  "files": [
+    "extension/annotations.js",
+    "extension/save.js",
+    "extension/history.js",
+    "extension/pages.js",
+    "extension/geometry.js",
+    "extension/paste.js"
+  ]
+}

@@ -1,3 +1,4 @@
+// @ts-check
 // Magic paste: what kind of thing was copied.
 
 // Markdown or just text? A couple of Markdown signs (a heading, a table, code, a checklist,

@@ -47,7 +47,7 @@ jobs:
             # The extension, exactly as it was at this tag
             rm -rf build && mkdir build
             git archive "${at[$v]}" extension | tar -x -C build
-            (cd build/extension && zip -qr -X "../../inkfold-$v.zip" . -x '.*' -x '*/.*')
+            (cd build/extension && zip -qr -X "../../inkfold-$v.zip" . -x '.*' -x '*/.*' -x '*.d.ts')
             # Title and notes from this version's CHANGELOG section ("## 1.9.0: title")
             heading=$(grep -m1 -E "^## ${v//./\\.}(:|$)" CHANGELOG.md || true)
             title="Inkfold $v"

@@ -1,3 +1,4 @@
+// @ts-check
 // Undo and redo, kept as differences rather than as copies of the whole document.
 //
 // The viewer describes its state as a snapshot: JSON of { entries, shapes } (page entries and annotations).

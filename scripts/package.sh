@@ -6,5 +6,5 @@ version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' extension/manifest.json | 
 mkdir -p dist
 out="dist/inkfold-${version}.zip"
 rm -f "$out"
-(cd extension && zip -qr -X "../$out" . -x '.*' -x '*/.*')
+(cd extension && zip -qr -X "../$out" . -x '.*' -x '*/.*' -x '*.d.ts')
 echo "Created $out ($(du -h "$out" | cut -f1))"
