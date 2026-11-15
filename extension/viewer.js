@@ -1470,11 +1470,12 @@ const clipStamp = async () => {
   return st ? lines(st.text ?? '').replace(/^\n+|\s+$/g, '') + '\u0000' + (st.pic ?? '') : null;
 };
 
-// Magic paste notices what you copy elsewhere, and its card opens by itself: in another tab or app, or in a panel
-// beside the PDF (such as Gemini's), where this tab stays in view but isn't the one in use. It looks whenever you
-// come back, and about once a second while the PDF is in view but you're working elsewhere. What was there when the
-// PDF opened, and what you copy in Inkfold itself, don't count; each new thing is offered once. It can be turned off
-// on the card.
+// Magic paste notices what you copy, and its card opens by itself: for what you copy from the PDF itself, in another
+// tab or app, or in a panel beside the PDF (such as Gemini's), where this tab stays in view but isn't the one in
+// use. It looks right after a copy here, whenever you come back, and about once a second while the PDF is in view but
+// you're working elsewhere. What was there when the PDF opened, and what you copy out of Inkfold's own fields (a
+// text box, the search, the page number), don't count; each new thing is offered once. Opened by itself, the card
+// closes after a few seconds unless you're using it. It can be turned off on the card.
 let lastClip = null, clipCheck = 0, autoMagic = store.get('autoMagic', true);
 async function noticeClipboard() {
   if (!autoMagic || !pages.length || document.hidden) return;
@@ -1508,13 +1509,19 @@ function watchClipboard() {
 addEventListener('focus', () => { watchClipboard(); noticeClipboard(); });
 addEventListener('blur', watchClipboard);
 document.addEventListener('visibilitychange', () => { watchClipboard(); if (!document.hidden) noticeClipboard(); });
-for (const ev of ['copy', 'cut']) addEventListener(ev, () => setTimeout(clipBaseline, 60));   // copied here: not news
+// A copy here: from the PDF's text it's offered like anything else; from one of Inkfold's own fields it isn't news.
+const ownField = t => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable], .pop, #magic, #find, dialog');
+for (const ev of ['copy', 'cut']) {
+  addEventListener(ev, e => setTimeout(() => (ownField(e.target) || editing ? clipBaseline() : noticeClipboard()), 60));
+}
 
 // Looks at the clipboard and offers what fits: a picture goes on this page, Markdown becomes a note
 // after it, plain text becomes a text box on it. auto: opened by itself, for something new on the clipboard.
+const AUTO_CLOSE = 3000;   // ms an automatically opened card stays, unless the pointer or the keyboard is on it
 async function magicPaste({ auto = false, clip = null } = {}) {
   if (!pages.length) return;
   const box = $('magic'), at = targetIndex(), p = pages[at];
+  box.classList.remove('auto');
   if (!auto && box.matches(':popover-open') && box.dataset.card === 'magic') return box.hidePopover();
   box.dataset.card = 'magic';
   const place = () => {
@@ -1555,15 +1562,22 @@ async function magicPaste({ auto = false, clip = null } = {}) {
     preview, el2('div', { class: 'acts' }, ...buttons), autoToggle());
   if (!box.matches(':popover-open')) box.showPopover();
   place();
-  if (!auto) buttons[0].focus();   // opened by itself, it doesn't take the keyboard from what you were doing
+  if (!auto) return buttons[0].focus();
+  // Opened by itself: it doesn't take the keyboard from what you were doing, and it goes after a few seconds.
+  // The bar along its foot shows the time left; it waits while the pointer is over the card or the focus is in it.
+  const timer = el2('div', { class: 'timer', 'aria-hidden': 'true' });
+  timer.style.animationDuration = AUTO_CLOSE + 'ms';
+  timer.addEventListener('animationend', () => { if (box.contains(timer) && box.matches(':popover-open')) box.hidePopover(); });
+  box.append(timer);
+  box.classList.add('auto');
 }
 
 // The switch at the foot of the Magic paste card: whether it opens by itself when you copy something new.
 function autoToggle() {
-  const cb = el2('input', { type: 'checkbox' });
-  cb.checked = autoMagic;
-  cb.onchange = () => { autoMagic = cb.checked; store.set('autoMagic', autoMagic); if (autoMagic) { clipBaseline(); watchClipboard(); } };
-  return el2('label', { class: 'auto' }, cb, 'Open this when I copy something new');
+  const sw = el2('input', { type: 'checkbox', role: 'switch', class: 'switch' });
+  sw.checked = autoMagic;
+  sw.onchange = () => { autoMagic = sw.checked; store.set('autoMagic', autoMagic); if (autoMagic) { clipBaseline(); watchClipboard(); } };
+  return el2('label', { class: 'toggle' }, el2('span', {}, 'Open when I copy something new'), sw);
 }
 
 // The × in the top-right corner of a card or dialog.
