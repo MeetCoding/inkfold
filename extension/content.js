@@ -17,17 +17,31 @@
     }
   }
 
+  // The takeover, in three steps: hide Chrome's viewer, start what the viewer will need, then put the viewer in.
   async function takeOver() {
-    // Hide Chrome's own viewer straight away, in Inkfold's background colour, so it doesn't flash up first.
+    const cover = hideChromeViewer();
+    const base = chrome.runtime.getURL('');
+    startEarly(base);
+    const doc = await viewerDocument(base);
+    if (document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r, { once: true }));
+    mount(doc, cover);
+    await import(base + 'viewer.js');
+    return true;
+  }
+
+  // Chrome's own viewer is hidden straight away, in Inkfold's background colour, so it doesn't flash up first.
+  function hideChromeViewer() {
     const cover = document.createElement('style');
     cover.id = 'inkfold-cover';
     cover.textContent = 'html { background: #ebe9e4 !important } body > * { visibility: hidden !important }'
       + '@media (prefers-color-scheme: dark) { html { background: #1b1b19 !important } }';
     document.documentElement.append(cover);
-    const base = chrome.runtime.getURL('');
+    return cover;
+  }
 
-    // Everything the viewer will need starts now, side by side, rather than one after another once it runs:
-    // the PDF reader's worker, the PDF reader itself, and (for a file on this computer) the file's bytes.
+  // Everything the viewer will need starts now, side by side, rather than one after another once it runs:
+  // the PDF reader's worker, the PDF reader itself, and (for a file on this computer) the file's bytes.
+  function startEarly(base) {
     globalThis.inkfoldEarly = {
       worker: startWorker(base + 'lib/pdf.worker.min.mjs'),
       bytes: location.protocol === 'file:' ? quiet(readLocal(base)) : null,
@@ -35,29 +49,33 @@
     };
     globalThis.inkfoldReadLocal = () => readLocal(base);   // the file again, later (to check what Save wrote)
     import(base + 'lib/pdf.min.mjs').catch(() => {});
+  }
 
+  // viewer.html, ready to go into this page: its own files pointed at the extension, its scripts taken out (viewer.js
+  // is imported instead), and its styles also inline, so the viewer is never seen unstyled (the link stays, in case
+  // a site's policy blocks inline styles). It starts on placeholder pages, not on "Open a PDF".
+  async function viewerDocument(base) {
     const get = file => fetch(base + file).then(r => r.text());
     const [html, css] = await Promise.all([get('viewer.html'), get('viewer.css')]);
-    if (document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r, { once: true }));
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    for (const el of doc.querySelectorAll('[href], [src]')) {   // the viewer's own files live in the extension
+    for (const el of doc.querySelectorAll('[href], [src]')) {
       for (const attr of ['href', 'src']) if (el.hasAttribute(attr)) el.setAttribute(attr, new URL(el.getAttribute(attr), base).href);
     }
     doc.querySelectorAll('script').forEach(s => s.remove());
-    // Styles also go in inline, so the viewer is never seen unstyled (the link stays, in case a site's policy blocks
-    // inline styles). It starts on placeholder pages, not on "Open a PDF".
     doc.querySelector('link[rel="stylesheet"]').before(Object.assign(doc.createElement('style'), { textContent: css }));
     doc.body.classList.add('opening');
-    // Swap in the viewer's head and body, keeping the page's root: the file reader's frame (for a local PDF)
-    // hangs off the root, so it isn't torn down while it's still reading.
+    return doc;
+  }
+
+  // Swap in the viewer's head and body, keeping the page's root: the file reader's frame (for a local PDF)
+  // hangs off the root, so it isn't torn down while it's still reading.
+  function mount(doc, cover) {
     const root = document.documentElement;
     for (const a of [...root.attributes]) root.removeAttribute(a.name);
     for (const a of doc.documentElement.attributes) root.setAttribute(a.name, a.value);
     cover.remove();
     root.querySelectorAll(':scope > head, :scope > body').forEach(n => n.remove());
     root.prepend(document.adoptNode(doc.head), document.adoptNode(doc.body));
-    await import(base + 'viewer.js');
-    return true;
   }
 
   const quiet = p => { p.catch(() => {}); return p; };   // the viewer handles a failure; nothing to report here
