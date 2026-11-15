@@ -836,8 +836,8 @@ function part(q, d) {   // ease a page aside by [dx, dy] (null: back in place)
 function moveGlide() {   // scroll while the pointer is near the top or bottom edge
   const m = moving;
   if (!m || m.key) return;
-  const top = header.getBoundingClientRect().bottom, edge = 70;
-  const v = m.y < top + edge ? -(top + edge - m.y) : m.y > innerHeight - edge ? m.y - (innerHeight - edge) : 0;
+  const { top, bottom } = visibleArea(), edge = 70;
+  const v = m.y < top + edge ? -(top + edge - m.y) : m.y > bottom - edge ? m.y - (bottom - edge) : 0;
   if (v) { scrollBy(0, Math.sign(v) * Math.min(28, Math.abs(v) / 2.5 + 2)); placeGhost(); }
   m.scroll = v ? requestAnimationFrame(moveGlide) : 0;
 }
@@ -894,8 +894,8 @@ addEventListener('keydown', e => {
   moving.key = true;
   moving.slot = clamp(moving.slot + step, 0, pages.length);
   const sl = slots()[moving.slot];
-  const top = header.getBoundingClientRect().bottom;
-  if (sl.y < top + 40 || sl.y > innerHeight - 40) scrollBy({ top: sl.y - (top + innerHeight) / 2 });
+  const { top, bottom } = visibleArea();
+  if (sl.y < top + 40 || sl.y > bottom - 40) scrollBy({ top: sl.y - (top + bottom) / 2 });
   if (sl.x < 20 || sl.x > innerWidth - 20) scrollBy({ left: sl.x - innerWidth / 2 });
   placeGhost();
 }, true);
@@ -930,8 +930,8 @@ function fitZoom(mode) {   // sized so that the widest / tallest page fits, so m
   return mode === 'page' ? Math.min(W / w, H / h) : mode === 'width' ? W / w : Math.min(W / w, 1.25);
 }
 
-function keepPlace(fn, toTop) {   // keep the same spot of the same page under the toolbar while fn() changes things
-  const top = header.getBoundingClientRect().bottom;
+function keepPlace(fn, toTop) {   // keep the same spot of the same page at the top of the view while fn() changes things
+  const top = visibleArea().top;
   const a = pages.find(p => p.div.getBoundingClientRect().bottom > top + 1) ?? pages[0];
   const idx = pages.indexOf(a), r = a?.div.getBoundingClientRect();
   const frac = r && !toTop ? Math.max(0, (top - r.top) / r.height) : 0;
@@ -975,7 +975,7 @@ function savePlace() {
   clearTimeout(placeTimer);
   const fp = docs.get('main')?.pdf.fingerprints?.[0];
   if (!fp || !pages.length || placing) return;
-  const top = header.getBoundingClientRect().bottom;
+  const top = visibleArea().top;
   const p = pages.find(p => p.div.getBoundingClientRect().bottom > top + 1) ?? pages[0];
   const r = p.div.getBoundingClientRect();
   const at = {
@@ -1000,7 +1000,7 @@ function restorePlace(main) {
     let k = link ? +link[1] - 1 : at.i != null ? pages.findIndex(p => p.e.doc === 'main' && p.e.i === at.i) : at.k;
     if (k < 0 || k >= pages.length) k = clamp(link ? k : at.k, 0, pages.length - 1);
     const frac = link ? 0 : at.frac;
-    const r = pages[k].div.getBoundingClientRect(), top = header.getBoundingClientRect().bottom;
+    const r = pages[k].div.getBoundingClientRect(), top = visibleArea().top;
     scrollBy(0, r.top + frac * r.height - top - (frac ? 0 : GAP));
     showPage(k);
     return link ? 0 : k + 1;   // (no "welcome back" for a link to a page)
@@ -1052,9 +1052,6 @@ function buildZoomPop() {
   pop.addEventListener('beforetoggle', e => {
     $('zoom').setAttribute('aria-expanded', e.newState === 'open');
     if (e.newState !== 'open') return;
-    const a = $('zoom').parentElement.getBoundingClientRect();
-    pop.style.top = a.bottom + 8 + 'px';
-    pop.style.left = clamp(a.left + a.width / 2 - 152, 8, innerWidth - 312) + 'px';
     syncZoomUi();
   });
 }
@@ -1090,9 +1087,10 @@ const targetIndex = () => (hovered && pages.includes(hovered) ? pages.indexOf(ho
 
 function currentIndex() {   // the page taking up most of the window
   let best = 0, area = -1;
+  const view = visibleArea();
   pages.forEach((p, k) => {
     const r = p.div.getBoundingClientRect();
-    const a = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, header.getBoundingClientRect().bottom))
+    const a = Math.max(0, Math.min(r.bottom, view.bottom) - Math.max(r.top, view.top))
       * Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
     if (a > area) { area = a; best = k; }
   });
@@ -1369,10 +1367,7 @@ function showCard(box, anchor, title, kind, preview, acts) {
     return b;
   });
   box.replaceChildren(closeX(() => box.hidePopover()), el2('h2', { id: 'magicTitle' }, title), el2('p', { class: 'kind' }, kind), ...(preview ? [preview] : []), el2('div', { class: 'acts' }, ...buttons));
-  if (!box.matches(':popover-open')) box.showPopover();
-  const r = anchor.getBoundingClientRect();
-  box.style.top = r.bottom + 8 + 'px';
-  box.style.left = Math.max(12, Math.min(r.left, innerWidth - box.offsetWidth - 12)) + 'px';
+  if (!box.matches(':popover-open')) box.showPopover();   // (in the bottom-right corner, like every card)
   buttons[0]?.focus();
 }
 
@@ -1412,7 +1407,7 @@ async function placeImage(p, src) {
   const W = im.w * 0.75 * k, H = im.h * 0.75 * k;
   const r = p.div.getBoundingClientRect();
   const sx = (Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2 - r.left;
-  const sy = (Math.max(r.top, 60) + Math.min(r.bottom, innerHeight)) / 2 - r.top;
+  const sy = (Math.max(r.top, visibleArea().top) + Math.min(r.bottom, visibleArea().bottom)) / 2 - r.top;
   let [cx, cy] = p.vp.convertToPdfPoint(sx, sy);
   cx = clamp(cx, x0 + W / 2, x1 - W / 2);
   cy = clamp(cy, y0 + H / 2, y1 - H / 2);
@@ -1524,15 +1519,9 @@ async function magicPaste({ auto = false, clip = null } = {}) {
   box.classList.remove('auto');
   if (!auto && box.matches(':popover-open') && box.dataset.card === 'magic') return box.hidePopover();
   box.dataset.card = 'magic';
-  const place = () => {
-    const r = $('magicBtn').getBoundingClientRect();
-    box.style.top = r.bottom + 8 + 'px';
-    box.style.left = Math.max(12, Math.min(r.left, innerWidth - box.offsetWidth - 12)) + 'px';
-  };
   if (!clip) {
     box.replaceChildren(closeX(() => box.hidePopover()), el2('p', { class: 'kind' }, 'Looking at your clipboard…'));
     box.showPopover();
-    place();
   }
   const { img, t } = clip ?? await readClip();
   if (!auto) clipBaseline();   // seen: it won't open by itself for this again
@@ -1561,7 +1550,6 @@ async function magicPaste({ auto = false, clip = null } = {}) {
     el2('p', { class: 'kind' }, `${kind} on your clipboard${img && t ? ' (and some text)' : ''}`),
     preview, el2('div', { class: 'acts' }, ...buttons), autoToggle());
   if (!box.matches(':popover-open')) box.showPopover();
-  place();
   if (!auto) return buttons[0].focus();
   // Opened by itself: it doesn't take the keyboard from what you were doing, and it goes after a few seconds.
   // The bar along its foot shows the time left; it waits while the pointer is over the card or the focus is in it.
@@ -1596,7 +1584,7 @@ async function pasteTextBox(p, t) {
   const L = await layout(text, textSize);
   const r = p.div.getBoundingClientRect();
   const sx = (Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2 - r.left;
-  const sy = (Math.max(r.top, 60) + Math.min(r.bottom, innerHeight)) / 2 - r.top;
+  const sy = (Math.max(r.top, visibleArea().top) + Math.min(r.bottom, visibleArea().bottom)) / 2 - r.top;
   let [cx, cy] = p.vp.convertToPdfPoint(sx, sy);
   const left = clamp(cx - L.w / 2, x0, Math.max(x0, x1 - L.w)), top = clamp(cy + L.h / 2, Math.min(y1, y0 + L.h), y1);
   commit(snapshot());
@@ -2113,8 +2101,8 @@ function startCrop(p) {
   $('cropAll').hidden = pages.filter(q => sameSize(q, p)).length < 2;
   $('cropbar').hidden = false;
   document.body.classList.add('cropping');
-  const r = p.div.getBoundingClientRect();
-  if (r.top < barHeight() + 8 || r.bottom > innerHeight - 76) p.div.scrollIntoView({ block: 'center', behavior: over > 1 ? 'instant' : 'smooth' });
+  const r = p.div.getBoundingClientRect(), view = visibleArea();
+  if (r.top < view.top + 8 || r.bottom > view.bottom - 76) p.div.scrollIntoView({ block: 'center', behavior: over > 1 ? 'instant' : 'smooth' });
   $('cropOk').focus();
 }
 
@@ -2132,7 +2120,7 @@ function endCrop() {
   if (before) inView(p);
 }
 
-// Bring a page into view: centred if it fits the window, else its top just under the toolbar.
+// Bring a page into view: centred if it fits the window, else its top at the top of the view.
 function inView(p) {
   const tall = p.div.getBoundingClientRect().height > innerHeight - barHeight() - 24;
   p.div.scrollIntoView({ block: tall ? 'start' : 'center', behavior: 'instant' });
@@ -2520,7 +2508,7 @@ function goPage(dir) { jumpTo(currentIndex() + dir); }
 // moving at once, never overshoots, and keeps up with pages turning faster than it could jump.
 const FLIP_FIRST = 260, FLIP_EVERY = 150, FLIP_FASTEST = 80, FLIP_OMEGA = 0.026;   // ms, ms, ms, 1/ms
 const flip = { k: -1, dir: 0, held: false, next: 0, turns: 0, v: 0, t: 0, raf: 0 };
-const flipTop = k => pages[k].div.getBoundingClientRect().top + scrollY - (barless ? GAP : 64);   // as scrollIntoView({ block: 'start' })
+const flipTop = k => pages[k].div.getBoundingClientRect().top + scrollY - GAP;   // as scrollIntoView({ block: 'start' })
 
 function stepPage(dir, repeat = false) {
   if (!pages.length || repeat) return;   // holding is paced below, not by the keyboard's repeat
@@ -2611,8 +2599,8 @@ function showPage(k = currentIndex()) {
 }
 
 // Hidden toolbar (Shift+H, or its button): the toolbar slides away and the pages get the whole window. Touching the
-// top edge with the pointer (or tabbing into it) brings it back; it stays while it's being used, or a card opened
-// from it is open, and slides away again once the pointer moves down. A small pill in the top-left corner shows the
+// bottom edge with the pointer (or tabbing into it) brings it back; it stays while it's being used, or a card opened
+// from it is open, and slides away again once the pointer moves up. A small pill in the bottom-left corner shows the
 // current tool and page meanwhile. Remembered.
 let barless = store.get('barless', false);
 const barHeight = () => (barless ? 0 : header.offsetHeight);
@@ -2639,11 +2627,12 @@ function setBarless(on, quiet = false) {
   document.body.classList.remove('reveal');
   $('barBtn').setAttribute('aria-pressed', on);
   const label = on ? 'Show the toolbar (Shift+H)' : 'Hide the toolbar (Shift+H)';
-  $('barBtn').title = on ? 'Show the toolbar for good (Shift+H)' : 'Hide the toolbar (Shift+H): it comes back when the pointer touches the top edge';
+  $('barBtn').title = on ? 'Show the toolbar for good (Shift+H)' : 'Hide the toolbar (Shift+H): it comes back when the pointer touches the bottom edge';
   $('barBtn').setAttribute('aria-label', label);
   if (fit && pages.length) setZoom(fitZoom(fit), fit, true);
   syncStatus();
-  if (!quiet) say(on ? 'Toolbar hidden. Touch the top edge with the pointer to bring it back; Shift+H shows it for good.' : '');
+  syncBarSpace();
+  if (!quiet) say(on ? 'Toolbar hidden. Touch the bottom edge with the pointer to bring it back; Shift+H shows it for good.' : '');
 }
 let barTabbed = false;   // tabbed into the toolbar (rather than left focused there by a click)
 addEventListener('keydown', e => { if (e.key === 'Tab') barTabbed = true; }, true);
@@ -2652,15 +2641,26 @@ const barInUse = () => (barTabbed && header.contains(document.activeElement)) ||
 function revealBar(on) {
   if (!barless) return;
   document.body.classList.toggle('reveal', on);
+  syncBarSpace();
 }
 addEventListener('pointermove', e => {
   if (!barless || e.pointerType === 'touch') return;
   const shown = document.body.classList.contains('reveal');
-  if (e.clientY <= 6) revealBar(true);
-  else if (shown && e.clientY > header.offsetHeight + 28 && !barInUse()) revealBar(false);
+  if (e.clientY >= innerHeight - 6) revealBar(true);
+  else if (shown && e.clientY < innerHeight - header.offsetHeight - 28 && !barInUse()) revealBar(false);
 }, { passive: true });
-// Leaving the page across its top edge (a quick flick up to the tabs) counts as touching it.
-document.addEventListener('mouseout', e => { if (barless && !e.relatedTarget && e.clientY <= 12) revealBar(true); });
+// Leaving the page across its bottom edge (a quick flick down to the taskbar) counts as touching it.
+document.addEventListener('mouseout', e => { if (barless && !e.relatedTarget && e.clientY >= innerHeight - 12) revealBar(true); });
+
+// The toolbar sits along the bottom of the window. Two measures go to the CSS: --bar-space, the room the pages leave
+// for it (none while it's hidden), and --bar-shown, how much of the window it covers right now, which the cards,
+// messages and crop bar sit above.
+function syncBarSpace() {
+  const h = header.offsetHeight, root = document.documentElement.style;
+  root.setProperty('--bar-space', (barless ? 0 : h) + 'px');
+  root.setProperty('--bar-shown', (barless && !document.body.classList.contains('reveal') ? 0 : h) + 'px');
+}
+new ResizeObserver(syncBarSpace).observe(header);
 header.addEventListener('focusin', () => { if (barTabbed) revealBar(true); });   // tabbed into
 header.addEventListener('focusout', () => setTimeout(() => { if (!barInUse() && !header.matches(':hover')) revealBar(false); }));
 addEventListener('scroll', () => {
@@ -2682,7 +2682,6 @@ function togglePanel(id, field) {
   const el = $(id);
   if (el.matches(':popover-open')) return el.hidePopover();
   document.querySelectorAll(':popover-open:not(#find)').forEach(x => x.hidePopover());
-  el.style.top = header.getBoundingClientRect().bottom + 6 + 'px';
   if (id === 'panel') {   // set up before showing, so nothing changes the fields while you type
     $('panelMsg').textContent = '';
     drawMerge();

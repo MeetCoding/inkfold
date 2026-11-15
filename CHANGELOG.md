@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **The toolbar is at the bottom**, and every card (Pages and file, Find, Zoom, Magic paste, the shortcuts, the
+  compression offer) opens in the bottom-right corner, just above it. Hidden (Shift+H), the toolbar slides down and
+  comes back when the pointer touches the bottom edge; the small tool-and-page pill sits in the bottom-left corner.
+- **Magic paste offers what you copy from the PDF itself**, not only what you copy elsewhere. Copies from Inkfold's
+  own fields (a text box, the search, the page number) still don't count.
+- **A Magic paste card that opened by itself closes after 3 seconds**, with a thin bar along its foot showing the
+  time left. It waits while the pointer or the keyboard is on it.
+- **"Open when I copy something new" is a switch**, across the foot of the Magic paste card.
+- **Shift+1 to Shift+5 pick a colour**: the toolbar's five, left to right, for the selected annotation or the next
+  ones you make.
+- **Find: Enter after Tab no longer scrolls a second time.** Tab (or ↓) to a result already shows its page; Enter now
+  just closes the box there.
 - **A smaller download**: the text recognition models now store their weights at half precision, which takes the
   extension from about 18 MB to under 12 MB. They read text exactly as before.
 - Under the hood: the annotation file format, saving and undo have modules of their own (`annotations.js`,

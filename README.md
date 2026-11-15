@@ -100,7 +100,7 @@ Coming soon.
 | <kbd>Del</kbd> | Delete annotation | <kbd>Shift</kbd> <kbd>Del</kbd> | Delete page |
 | <kbd>Esc</kbd> | Deselect / close panel | <kbd>P</kbd> | Pages and file panel |
 | <kbd>Ctrl</kbd> <kbd>V</kbd> | Magic paste | | |
-| <kbd>Shift</kbd> <kbd>H</kbd> | Hide the toolbar (it comes back when the pointer touches the top edge); again to show it |
+| <kbd>Shift</kbd> <kbd>H</kbd> | Hide the toolbar (it comes back when the pointer touches the bottom edge); again to show it |
 | <kbd>Ctrl</kbd> <kbd>O</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> / <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>S</kbd> | Open (start page only) / save / save a copy | <kbd>?</kbd> | Shortcut list |
 
 Page shortcuts act on the page under the pointer, or else the page filling the window. Inside the Pages and file panel's range box, <kbd>[</kbd> <kbd>]</kbd> and <kbd>Shift</kbd> <kbd>Del</kbd> act on the typed range instead.

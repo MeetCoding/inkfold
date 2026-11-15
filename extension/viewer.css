@@ -2,6 +2,9 @@
   color-scheme: light dark;
   --bg: #ebe9e4; --bar: #fbfaf8; --line: #dedbd4; --hover: #efede8; --ink: #24231f; --dim: #74716a;
   --accent: #2f6fe0; --accent-soft: #e3ebfb; --danger: #c93a3e; --shadow: 0 8px 28px rgb(0 0 0 / .16);
+  /* The toolbar runs along the bottom. --bar-space: the room the pages leave for it (none while it's hidden);
+     --bar-shown: how much of the window it covers right now, which cards and messages sit above. Set by viewer.js. */
+  --bar-space: 48px; --bar-shown: 48px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -12,12 +15,13 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
 
-/* ---------- toolbar ---------- */
+/* ---------- toolbar, along the bottom of the window ---------- */
 header {
-  position: sticky; top: 0; z-index: 2; display: grid; align-items: center; gap: 6px 10px;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; display: grid; align-items: center; gap: 6px 10px;
   grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);   /* page number and zoom sit in the middle */
-  min-height: 48px; padding: 7px 12px; background: var(--bar); border-bottom: 1px solid var(--line);
+  min-height: 48px; padding: 7px 12px; background: var(--bar); border-top: 1px solid var(--line);
 }
+body { padding-bottom: var(--bar-space); }
 .bar-l, .bar-c, .bar-r { display: flex; align-items: center; gap: 3px; }
 .bar-r { justify-content: flex-end; }
 @media (max-width: 1240px) {   /* too narrow for three columns: let the toolbar wrap */
@@ -60,13 +64,13 @@ button:disabled:hover { background: transparent; }
 #zoom[aria-expanded="true"] .chev { transform: rotate(180deg); }
 
 #zoomPop {
-  position: fixed; inset: auto; margin: 0; width: 304px; padding: 10px; color: var(--ink);
+  position: fixed; inset: auto 12px calc(var(--bar-shown) + 12px) auto; margin: 0; width: 304px; padding: 10px; color: var(--ink);
   background: var(--bar); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
-  opacity: 0; transform: translateY(-4px) scale(.98); transform-origin: top center;
+  opacity: 0; transform: translateY(4px) scale(.98); transform-origin: bottom right;
   transition: opacity .14s, transform .14s, overlay .14s allow-discrete, display .14s allow-discrete;
 }
 #zoomPop:popover-open { opacity: 1; transform: none; }
-@starting-style { #zoomPop:popover-open { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@starting-style { #zoomPop:popover-open { opacity: 0; transform: translateY(4px) scale(.98); } }
 
 #zoomPop .fits { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 #zoomPop .fits button {
@@ -156,7 +160,7 @@ main.spread { display: grid; grid-template-columns: repeat(2, max-content); just
 .page {
   position: relative; flex: none; background: #fff; isolation: isolate; border-radius: 2px;
   box-shadow: 0 0 0 1px rgb(0 0 0 / .06), 0 2px 8px rgb(0 0 0 / .12);
-  scroll-margin-top: 64px; content-visibility: auto;   /* Chrome skips work for pages out of view */
+  scroll-margin: 16px 0 calc(var(--bar-space) + 16px); content-visibility: auto;   /* Chrome skips work for pages out of view */
   --total-scale-factor: var(--scale-factor); --scale-round-x: 1px; --scale-round-y: 1px;
 }
 .page > canvas, .page > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -247,8 +251,11 @@ body[data-tool="eraser"] .shapes * { cursor: inherit; }
 #menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
 
 /* ---------- panels, dialog, toast ---------- */
+/* Every card (Pages and file, Find, Zoom, Magic paste, the shortcuts, the compression offer) opens in the
+   bottom-right corner, just above the toolbar. Modal dialogs, which need an answer first, stay in the middle. */
 .pop {
-  position: fixed; inset: auto 12px auto auto; top: 56px; margin: 0; width: 320px; max-width: calc(100vw - 24px);
+  position: fixed; inset: auto 12px calc(var(--bar-shown) + 12px) auto; margin: 0; width: 320px; max-width: calc(100vw - 24px);
+  max-height: calc(100vh - var(--bar-shown) - 24px); overflow: auto;
   padding: 16px; background: var(--bar); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
 }
 .pop h2, dialog h2 { margin: 0 0 12px; font-size: 15px; }
@@ -305,7 +312,7 @@ dialog .link { padding: 0; height: auto; color: var(--accent); text-decoration: 
 dialog .link:hover { background: none; }
 
 #toast {
-  position: fixed; left: 50%; bottom: 22px; z-index: 5; display: flex; align-items: center; gap: 12px;
+  position: fixed; left: 50%; bottom: calc(var(--bar-shown) + 14px); z-index: 5; display: flex; align-items: center; gap: 12px;
   max-width: min(560px, calc(100vw - 32px)); padding: 10px 12px 10px 16px; color: #f4f3ef; background: #2b2a27;
   border-radius: 10px; box-shadow: var(--shadow); transform: translate(-50%, 12px); opacity: 0; pointer-events: none;
   transition: opacity .15s, transform .15s;
@@ -316,7 +323,7 @@ dialog .link:hover { background: none; }
 
 /* ---------- magic paste ---------- */
 #magic {
-  position: fixed; inset: auto; margin: 0; width: min(340px, calc(100vw - 24px)); padding: 14px;
+  position: fixed; inset: auto 12px calc(var(--bar-shown) + 12px) auto; margin: 0; width: min(340px, calc(100vw - 24px)); padding: 14px;
   color: var(--ink); background: var(--bar); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
 }
 #magic h2 { margin: 0 0 2px; font-size: 13px; }
@@ -389,7 +396,8 @@ button.mini[hidden] { display: none; }
 
 /* ---------- find ---------- */
 #find {
-  position: fixed; inset: auto 12px auto auto; margin: 0; width: 360px; max-width: calc(100vw - 24px); max-height: calc(100vh - 72px);
+  position: fixed; inset: auto 12px calc(var(--bar-shown) + 12px) auto; margin: 0; width: 360px; max-width: calc(100vw - 24px);
+  max-height: calc(100vh - var(--bar-shown) - 24px);
   display: none; flex-direction: column; padding: 0; overflow: hidden; color: var(--ink);
   background: var(--bar); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
 }
@@ -429,7 +437,7 @@ button.mini[hidden] { display: none; }
 ::highlight(find-on) { background-color: rgb(255 140 0 / .55); }
 
 #notice {
-  position: fixed; right: 16px; bottom: 16px; z-index: 5; width: min(340px, calc(100vw - 32px)); padding: 14px 14px 12px;
+  position: fixed; right: 12px; bottom: calc(var(--bar-shown) + 12px); z-index: 5; width: min(340px, calc(100vw - 24px)); padding: 14px 14px 12px;
   color: var(--ink); background: var(--bar); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
 }
 #notice p { margin: 0 0 12px; line-height: 1.45; }
@@ -437,7 +445,7 @@ button.mini[hidden] { display: none; }
 
 /* ---------- empty state ---------- */
 #drop {
-  position: fixed; inset: 68px 20px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: fixed; inset: 20px 20px calc(var(--bar-space) + 20px); display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; padding: 24px; text-align: center; color: var(--dim); border: 1.5px dashed var(--line); border-radius: 16px; cursor: pointer;
 }
 #drop:hover { border-color: var(--dim); }
@@ -572,7 +580,7 @@ button.primary:disabled, button.primary:disabled:hover, #panel .row button.prima
 .cropper:not(.fresh) .crop-hint { opacity: 0; }
 
 #cropbar {
-  position: fixed; left: 50%; bottom: 22px; z-index: 20; display: flex; align-items: center; gap: 6px;
+  position: fixed; left: 50%; bottom: calc(var(--bar-shown) + 14px); z-index: 20; display: flex; align-items: center; gap: 6px;
   max-width: calc(100vw - 24px); padding: 7px 7px 7px 16px; color: #f4f3ef; background: #2b2a27;
   border-radius: 12px; box-shadow: var(--shadow); translate: -50% 0; animation: cropbar-in .18s ease-out;
 }
@@ -585,7 +593,7 @@ button.primary:disabled, button.primary:disabled:hover, #panel .row button.prima
 #cropbar button.primary { background: #f4f3ef; color: #1f1e1c; font-weight: 600; padding: 0 16px; }
 #cropbar button.primary:hover { background: #fff; }
 @media (max-width: 620px) { #cropTitle, #cropbar .gap { display: none; } }
-body.cropping #toast { bottom: 78px; }
+body.cropping #toast { bottom: calc(var(--bar-shown) + 70px); }
 /* white needs a firmer rim to show on the light toolbar */
 #palette button[data-c="#ffffff"] .dot { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .32); }
 #palette button[data-c="#ffffff"][aria-checked="true"] .dot { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .32), 0 0 0 2px var(--bar), 0 0 0 3.5px var(--ink); }
@@ -602,24 +610,18 @@ dialog .xclose { top: 10px; right: 10px; }
 #zoomPop h2 { margin: 2px 0 10px 2px; font-size: 13px; }
 #magic { padding-top: 14px; }
 #magic > .kind:only-of-type:first-of-type { padding-right: 34px; }
-#magic .auto {
-  display: flex; align-items: center; gap: 7px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line);
-  font-size: 12px; color: var(--dim); cursor: pointer;
-}
-#magic .auto input { margin: 0; accent-color: var(--accent); }
 
-/* ---------- hidden toolbar: it slides away, and comes back while the pointer is at the top edge ---------- */
+/* ---------- hidden toolbar: it slides away, and comes back while the pointer is at the bottom edge ---------- */
 body.barless header {
-  position: fixed; left: 0; right: 0; top: 0; transform: translateY(calc(-100% - 2px));
+  transform: translateY(calc(100% + 2px));
   transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s;
 }
 body.barless.reveal header { transform: none; box-shadow: var(--shadow); }
-body.barless .page { scroll-margin-top: 16px; }
 #barBtn { width: 28px; padding: 0; display: grid; place-items: center; }
 body.barless #barBtn svg { transform: rotate(180deg); }
-/* the current tool and page, small, in the top-left corner while the toolbar is away */
+/* the current tool and page, small, in the bottom-left corner while the toolbar is away */
 #status {
-  position: fixed; left: 10px; top: 8px; z-index: 3; display: none; align-items: center; gap: 7px;
+  position: fixed; left: 10px; bottom: 8px; z-index: 3; display: none; align-items: center; gap: 7px;
   padding: 3px 10px 3px 7px; border-radius: 999px; font-size: 11.5px; color: var(--dim); pointer-events: none;
   background: color-mix(in srgb, var(--bar) 82%, transparent); border: 1px solid var(--line);
   backdrop-filter: blur(6px); box-shadow: 0 1px 4px rgb(0 0 0 / .08); font-variant-numeric: tabular-nums;
