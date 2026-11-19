@@ -312,6 +312,7 @@ function size(p) {
   p.div.style.setProperty('--scale-factor', p.vp.scale);
   p.text?.update({ viewport: p.vp });
   paint(p);   // the old canvas stretches to the new size until settle() re-renders it sharp
+  if (cropping?.p === p) drawCrop();   // the crop box keeps to the page when it's zoomed or the window resized
 }
 
 function settle(delay = 0) {   // re-render visible pages once sizes stop changing
@@ -2324,7 +2325,7 @@ function cropDrag(ev) {
   const { p, ui } = cropping, rect = p.div.getBoundingClientRect();
   const lo = -CROP_OUT, hi = 1 + CROP_OUT;
   const at = e => [clamp((e.clientX - rect.left) / rect.width, lo, hi), clamp((e.clientY - rect.top) / rect.height, lo, hi)];
-  const start = at(ev), from = [...cropping.box];
+  const start = at(ev), from = [...cropping.box], prev = [...cropping.box];   // prev: the box before this press
   const minW = 24 / rect.width, minH = 24 / rect.height;
   let h = ev.target.dataset.h ?? (ev.target.closest('.crop-box') ? 'move' : 'new');
   if (h === 'new') { cropping.box = [start[0], start[1], start[0], start[1]]; h = 'se'; from.splice(0, 4, ...cropping.box); }
@@ -2351,13 +2352,18 @@ function cropDrag(ev) {
   const up = () => {
     ui.classList.remove('dragging');
     ui.removeEventListener('pointermove', move);
+    ui.removeEventListener('pointerup', up);
+    ui.removeEventListener('pointercancel', up);
+    if (cropping?.ui !== ui) return;   // (the crop ended meanwhile)
     const [l, t, r, b] = cropping.box;
-    if (r - l < minW || b - t < minH) cropping.box = from[0] === from[2] ? [0, 0, 1, 1] : from;   // a click, not a drag
+    // A click, not a drag (or a box too small to keep): the box stays as it was. (A click outside it used to make
+    // it the whole page, so Crop then did nothing.)
+    if (r - l < minW || b - t < minH) cropping.box = prev;
     drawCrop();
   };
   ui.addEventListener('pointermove', move);
-  ui.addEventListener('pointerup', up, { once: true });
-  ui.addEventListener('pointercancel', up, { once: true });
+  ui.addEventListener('pointerup', up);
+  ui.addEventListener('pointercancel', up);
 }
 
 // Trim margins: the box shrinks to what's printed on the page (anything not near-white), plus a little air.

@@ -64,9 +64,10 @@ button:disabled:hover { background: transparent; }
 #zoom[aria-expanded="true"] .chev { transform: rotate(180deg); }
 
 #zoomPop {
-  position: fixed; inset: auto 12px calc(var(--bar-shown) + 12px) auto; margin: 0; width: 304px; padding: 10px; color: var(--ink);
+  /* centred above the toolbar, over the zoom control that opens it */
+  position: fixed; inset: auto 0 calc(var(--bar-shown) + 12px) 0; margin: 0 auto; width: 304px; max-width: calc(100vw - 24px); padding: 10px; color: var(--ink);
   background: var(--bar); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
-  opacity: 0; transform: translateY(4px) scale(.98); transform-origin: bottom right;
+  opacity: 0; transform: translateY(4px) scale(.98); transform-origin: bottom center;
   transition: opacity .14s, transform .14s, overlay .14s allow-discrete, display .14s allow-discrete;
 }
 #zoomPop:popover-open { opacity: 1; transform: none; }
@@ -252,8 +253,8 @@ body[data-tool="eraser"] .shapes * { cursor: inherit; }
 #menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
 
 /* ---------- panels, dialog, toast ---------- */
-/* Every card (Pages and file, Find, Zoom, Magic paste, the shortcuts, the compression offer) opens in the
-   bottom-right corner, just above the toolbar. Modal dialogs, which need an answer first, stay in the middle. */
+/* Every card (Pages and file, Find, Magic paste, the shortcuts, the compression offer) opens in the
+   bottom-right corner, just above the toolbar; Zoom opens in the middle, over its control. Modal dialogs, which need an answer first, stay in the middle. */
 .pop {
   position: fixed; inset: auto 12px calc(var(--bar-shown) + 12px) auto; margin: 0; width: 320px; max-width: calc(100vw - 24px);
   max-height: calc(100vh - var(--bar-shown) - 24px); overflow: auto;
