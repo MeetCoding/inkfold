@@ -2795,7 +2795,7 @@ function visibleArea() {
 }
 const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', cut: 'Cutter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
 // The pill, while the toolbar is hidden: the tool's icon, then what its keys pick, each marked with its key: the
-// colours (Shift+1…5, marked ⇧1…⇧5 so they aren't taken for the thickness keys), the line thickness (1, 2, 3) and
+// colours (Shift+1…5: the set is marked once with a drawn shift arrow, so they aren't taken for the thickness keys), the line thickness (1, 2, 3) and
 // outline or filled (R / O again) for shapes, the size (− +) for text; then the page. The colours, thicknesses and
 // fill can be clicked too.
 function syncStatus() {
@@ -2815,8 +2815,11 @@ function statusOptions() {
     b.onclick = fn;
     return b;
   };
-  const sets = [el2('span', { class: 'set' }, ...palette().map(([n, c], i) => {
-    const b = opt(`${n} (Shift+${i + 1})`, c === cur, '⇧' + (i + 1), () => pickColor(c), el2('span', { class: 'dot' }));
+  // (drawn rather than the ⇧ character, which fonts draw heavy and uneven at this size)
+  const shift = el2('span', { class: 'shift', title: 'Hold Shift' });
+  shift.innerHTML = '<svg viewBox="0 0 6 7" aria-hidden="true"><path d="M3 .7 5.4 3.4H4V6.3H2V3.4H.6Z" fill="none" stroke="currentColor" stroke-width=".85" stroke-linejoin="round"/></svg>';
+  const sets = [el2('span', { class: 'set shifted' }, shift, ...palette().map(([n, c], i) => {
+    const b = opt(`${n} (Shift+${i + 1})`, c === cur, String(i + 1), () => pickColor(c), el2('span', { class: 'dot' }));
     b.firstChild.style.background = c;
     return b;
   }))];
