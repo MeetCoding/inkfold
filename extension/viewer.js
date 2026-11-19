@@ -330,6 +330,8 @@ async function render(p) {
   const canvas = document.createElement('canvas');
   canvas.width = viewport.width;
   canvas.height = viewport.height;
+  // Chrome can throw a canvas's pixels away while the tab sleeps; it comes back blank, so draw it again.
+  canvas.addEventListener('contextrestored', () => p.canvas === canvas && redraw(p));
   const task = p.task = p.page.render({
     canvas, canvasContext: canvas.getContext('2d'), viewport,
     annotationMode: pdfjs.AnnotationMode.ENABLE_STORAGE,   // honours the noView flags set in openPdf
@@ -341,6 +343,23 @@ async function render(p) {
   painted?.done();
   Object.assign(p, { canvas, task: null, at: key });
 }
+
+function redraw(p) {   // render again even though nothing changed (the canvas lost its pixels)
+  p.at = p.want = '';
+  render(p);
+}
+
+// Back from a sleeping or frozen tab: redraw pages whose canvas was wiped. A long sleep can wipe one
+// without saying so, so after one every page on screen is redrawn (the old canvas stays up meanwhile).
+let hiddenAt = 0;
+function wake(force = false) {
+  const long = force || (hiddenAt && performance.now() - hiddenAt > 30e3);
+  hiddenAt = 0;
+  for (const p of pages) if (p.visible && (long || p.canvas?.getContext('2d').isContextLost?.())) redraw(p);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt ||= performance.now(); else wake(); });
+document.addEventListener('resume', () => wake(true));   // (a frozen tab: always redraw)
+addEventListener('pageshow', e => e.persisted && wake(true));   // back from the back/forward cache
 
 function unrender(p) {
   p.task?.cancel();
