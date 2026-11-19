@@ -127,7 +127,8 @@ export const KINDS = {
     },
   },
 
-  // A FreeText annotation: the text as its contents, drawn by its own appearance (Helvetica plus math outlines).
+  // A FreeText annotation: the text as its contents, drawn by its own appearance (Helvetica plus math outlines,
+// and emoji as small pictures).
   // The leading and trailing no-op text objects tell readers (pdf.js included) the font size and colour.
   // (For FreeText, /C would be a background fill, so it has none.)
   text: {
@@ -136,8 +137,10 @@ export const KINDS = {
       const rgb = rgbOf(s.color), L = await w.layout(s.text, s.size), helv = await w.font();
       const rect = [s.x1, s.y2 - L.h, s.x1 + L.w, s.y2].map(round);
       const mark = `BT /Helv ${s.size} Tf ${rgb.join(' ')} rg ET`;
+      const emoji = {};   // each emoji's picture, as /E0, /E1, … (see textbox.js)
+      for (const [k, g] of (L.emoji ?? []).entries()) emoji['E' + k] = (await w.emoji(g)).ref;
       const look = w.ctx.stream(`${mark}\n${w.pdfOps(L, s.x1, s.y2, rgb)}\n${mark}`, {
-        Type: 'XObject', Subtype: 'Form', BBox: rect, Resources: { Font: { Helv: helv.ref } },
+        Type: 'XObject', Subtype: 'Form', BBox: rect, Resources: { Font: { Helv: helv.ref }, ...(L.emoji?.length ? { XObject: emoji } : {}) },
       });
       return {
         Subtype: 'FreeText', Rect: rect, Contents: w.lib.PDFHexString.fromText(s.text),
@@ -175,13 +178,17 @@ export const SUBTYPES = Object.keys(BY_SUBTYPE);
 
 // Writing. One writer per saved file: it embeds Helvetica, and each picture, at most once.
 //   images(key) -> { mime: 'image/png' | 'image/jpeg', bytes } or null
-//   layout, pdfOps: textbox.js's, for text boxes
-export function writer(lib, doc, { images, layout, pdfOps }) {
-  const ctx = doc.context, pics = new Map();
+//   layout, pdfOps, emojiPicture: textbox.js's, for text boxes
+export function writer(lib, doc, { images, layout, pdfOps, emojiPicture }) {
+  const ctx = doc.context, pics = new Map(), emoji = new Map();
   let helv = null;
   const w = {
     lib, ctx, layout, pdfOps,
     font: async () => (helv ??= await doc.embedFont(lib.StandardFonts.Helvetica)),
+    emoji(g) {   // an emoji's picture, embedded once (layout only lists emoji it has a picture of)
+      if (!emoji.has(g)) emoji.set(g, emojiPicture(g).then(p => doc.embedPng(p.png)));
+      return emoji.get(g);
+    },
     async picture(key) {
       if (pics.has(key)) return pics.get(key);
       const im = images(key);

@@ -1,6 +1,7 @@
-// Text boxes: plain text in Helvetica (one of the PDF standard fonts) with inline LaTeX ($…$, \(…\), $$…$$).
-// One layout, measured with Helvetica's own metrics, is used both to draw the box on screen (as SVG)
-// and to write its appearance into the saved PDF, so the two always match.
+// Text boxes: plain text in Helvetica (one of the PDF standard fonts) with inline LaTeX ($…$, \(…\), $$…$$)
+// and emoji. One layout, measured with Helvetica's own metrics, is used both to draw the box on screen (as SVG)
+// and to write its appearance into the saved PDF, so the two always match. Helvetica has no emoji, so each one is
+// drawn once with the system's colour-emoji font into a small picture, shown on screen and embedded in the PDF.
 // Units are PDF points, with (0, 0) at the box's top-left and y pointing down.
 import { loadMath, hasMath, typeset, cssColor } from './math.js';
 
@@ -22,6 +23,59 @@ const SWAP = { '→': '->', '←': '<-', '⇒': '=>', '≥': '>=', '≤': '<=', 
 // Characters Helvetica (WinAnsi) can't show become '?'; emoji and invisible marks are dropped.
 export const cleanWith = set => s => [...s].map(ch => SWAP[ch] ?? (set.has(ch.codePointAt(0)) ? ch
   : /[​-‏︀-️]|\p{Extended_Pictographic}/u.test(ch) ? '' : '?')).join('');
+
+// Emoji. A grapheme is one when it's pictographic (or a flag or keycap) and not a character Helvetica has (©, ®, ™).
+const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
+const graphemes = s => typeof Intl.Segmenter === 'function'
+  ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map(g => g.segment) : [...s];
+const isEmoji = (g, set) => EMOJI.test(g) && !(g.length === 1 && set.has(g.codePointAt(0)));
+// Room an emoji takes in a line, and the square its picture is drawn in, as fractions of the text size.
+const E_ADV = 1.2, E_BOX = 1.25, E_MID = 0.34;   // E_MID: its centre, above the baseline
+
+// One emoji drawn with the system's colour-emoji font -> { url, png } (a PNG, and the same as a data: URL),
+// or null where there's no canvas (saving under Node) or no font has it (the picture came out empty).
+const EMOJI_PX = 96, EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif';
+const emojiPics = new Map();
+export function emojiPicture(g) {
+  if (!emojiPics.has(g)) emojiPics.set(g, (async () => {
+    if (typeof OffscreenCanvas !== 'function') return null;
+    const c = new OffscreenCanvas(EMOJI_PX, EMOJI_PX), x = c.getContext('2d');
+    if (!x) return null;
+    x.font = `${Math.round(EMOJI_PX * 0.75)}px ${EMOJI_FONT}`;
+    const m = x.measureText(g);   // centred by its ink, whatever the font's metrics
+    x.fillText(g, EMOJI_PX / 2 - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2 + m.actualBoundingBoxLeft,
+      EMOJI_PX / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+    const px = x.getImageData(0, 0, EMOJI_PX, EMOJI_PX).data;
+    let ink = false;
+    for (let i = 3; i < px.length && !ink; i += 4) ink = px[i] > 0;
+    if (!ink) return null;
+    const png = new Uint8Array(await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < png.length; i += 0x8000) bin += String.fromCharCode(...png.subarray(i, i + 0x8000));
+    return { url: 'data:image/png;base64,' + btoa(bin), png };
+  })().catch(() => null));
+  return emojiPics.get(g);
+}
+
+// Plain text -> runs of text and single emoji: [{ text } | { emoji }]. Without a canvas the emoji are left in the
+// text, where cleanWith drops them as before.
+function emojiRuns(s, set) {
+  const out = [];
+  for (const g of graphemes(s)) {
+    if (isEmoji(g, set)) out.push({ emoji: g });
+    else if (out.length && out.at(-1).text !== undefined) out.at(-1).text += g;
+    else out.push({ text: g });
+  }
+  return out;
+}
+
+// The width of plain text (emoji included) at this size, as layout() lays it out.
+function widthOf(f, set, s, size) {
+  const clean = cleanWith(set);
+  let w = 0;
+  for (const r of emojiRuns(s, set)) w += r.emoji !== undefined ? E_ADV * size : f.widthOfTextAtSize(clean(r.text), size);
+  return w;
+}
 
 // Math: $$…$$ and \[…\] (display), \(…\) and $…$ (inline).
 const MATH = /\$\$([^$]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|(?<![\\$\w])\$(?=\S)([^$]*?\S)\$(?![\d$])/g;
@@ -46,7 +100,8 @@ function runs(line) {
 const cache = new Map();   // `${size}|${text}` -> layout (a promise while it's being made)
 export const cached = (text, size) => cache.get(size + '|' + text);
 
-// -> { w, h, lines: [{ base, items: [{ x, str, w } | { x, math, k, w }] }] }   (base: baseline from the top)
+// -> { w, h, lines: [{ base, items: [{ x, str, w } | { x, math, k, w } | { x, emoji, pic, w }] }], emoji: [g…] }
+//    (base: baseline from the top; emoji: those used, in order, whose pictures pdfOps draws as /E0, /E1, …)
 export function layout(text, size) {
   const key = size + '|' + text;
   if (cache.has(key)) return cache.get(key);   // the layout, or the promise of it
@@ -56,7 +111,7 @@ export function layout(text, size) {
     let math = false;
     if (hasMath(text)) { try { await loadMath(); math = true; } catch {} }
     const k = size / 1000;   // MathJax units are 1/1000 em
-    const lines = [];
+    const lines = [], used = [];
     let y = PAD, w = 0;
     for (const raw of joinMath(text.replace(/\r\n?|[\v\f\u0085\u2028\u2029]/g, '\n')).split('\n')) {   // any line break
       const items = [];
@@ -72,18 +127,29 @@ export function layout(text, size) {
             continue;
           } catch {}   // invalid TeX: show the source as written
         }
-        const str = clean(r.text ?? r.src);
-        if (!str) continue;
-        const sw = f.widthOfTextAtSize(str, size);
-        items.push({ x, str, w: sw });
-        x += sw;
+        for (const part of emojiRuns(r.text ?? r.src, set)) {
+          const pic = part.emoji !== undefined && await emojiPicture(part.emoji);
+          if (pic) {
+            if (!used.includes(part.emoji)) used.push(part.emoji);
+            items.push({ x, emoji: part.emoji, pic, w: E_ADV * size });
+            x += E_ADV * size;
+            asc = Math.max(asc, (E_MID + E_BOX / 2) * size);
+            desc = Math.max(desc, (E_BOX / 2 - E_MID) * size);
+            continue;
+          }
+          const str = clean(part.text ?? part.emoji);   // (an emoji with no picture is dropped)
+          if (!str) continue;
+          const sw = f.widthOfTextAtSize(str, size);
+          items.push({ x, str, w: sw });
+          x += sw;
+        }
       }
       const lead = size * 0.2;
       lines.push({ base: y + asc, items });
       y += asc + desc + lead;
       w = Math.max(w, x);
     }
-    const out = { size, w: Math.max(w + PAD, size * 0.6), h: y - size * 0.2 + PAD, lines, encode: s => f.encodeText(s).toString() };
+    const out = { size, w: Math.max(w + PAD, size * 0.6), h: y - size * 0.2 + PAD, lines, emoji: used, encode: s => f.encodeText(s).toString() };
     cache.set(key, out);
     return out;
   })();
@@ -100,6 +166,9 @@ const hex = (c, fallback) => {
 };
 const clampByte = v => Math.min(255, Math.max(0, v || 0));
 
+// Where an emoji's picture goes: [x, y, side], its top-left corner from the box's, in points.
+const emojiBox = (it, line, size) => [it.x + (it.w - E_BOX * size) / 2, line.base - (E_MID + E_BOX / 2) * size, E_BOX * size];
+
 // The laid-out box as SVG markup, in points (the caller positions and scales it).
 export function svgOf(L, color) {
   const esc = s => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -107,6 +176,11 @@ export function svgOf(L, color) {
   let out = '';
   for (const line of L.lines) {
     for (const it of line.items) {
+      if (it.emoji !== undefined) {
+        const [ex, ey, es] = emojiBox(it, line, L.size);
+        out += `<image href="${esc(it.pic.url)}" x="${ex}" y="${ey}" width="${es}" height="${es}"/>`;
+        continue;
+      }
       if (it.str !== undefined) {
         out += `<text x="${it.x}" y="${line.base}" font-family='${FONT_STACK}' font-size="${L.size}" fill="${color}" textLength="${it.w}" lengthAdjust="spacingAndGlyphs" xml:space="preserve">${esc(it.str)}</text>`;
         continue;
@@ -126,12 +200,17 @@ export function svgOf(L, color) {
 }
 
 // PDF content-stream operators drawing the box with its top-left at (X, Y) in page space.
-// The font must be available in the stream's resources as /Helv.
+// The font must be available in the stream's resources as /Helv, and each emoji's picture (L.emoji[k]) as /Ek.
 export function pdfOps(L, X, Y, rgb) {
   const n = v => +v.toFixed(3), ops = [], col = rgb.map(n).join(' ');
   const pt = (x, y) => `${n(X + x)} ${n(Y - y)}`;
   for (const line of L.lines) {
     for (const it of line.items) {
+      if (it.emoji !== undefined) {
+        const [ex, ey, es] = emojiBox(it, line, L.size);
+        ops.push(`q ${n(es)} 0 0 ${n(es)} ${pt(ex, ey + es)} cm /E${L.emoji.indexOf(it.emoji)} Do Q`);
+        continue;
+      }
       if (it.str !== undefined) {
         ops.push(`BT /Helv ${n(L.size)} Tf ${col} rg ${pt(it.x, line.base)} Td ${L.encode(it.str)} Tj ET`);
         continue;
@@ -165,7 +244,7 @@ export function pdfOps(L, X, Y, rgb) {
 // Existing line breaks are kept.
 export async function wrapText(text, size, maxW) {
   const { f, set } = await font();
-  const clean = cleanWith(set), wOf = s => f.widthOfTextAtSize(clean(s), size);
+  const wOf = s => widthOf(f, set, s, size);
   const out = [];
   for (const para of joinMath(text).split('\n')) {
     let line = '';
@@ -178,14 +257,14 @@ export async function wrapText(text, size, maxW) {
         continue;
       }
       if (line && wOf(line + word.trimEnd()) > maxW) { out.push(line.trimEnd()); line = ''; }
-      let w = word;
-      while (wOf(w.trimEnd()) > maxW && w.length > 1) {   // a single word too long for a line
+      let w = graphemes(word);   // (by grapheme, so an emoji is never split)
+      while (wOf(w.join('').trimEnd()) > maxW && w.length > 1) {   // a single word too long for a line
         let n = w.length - 1;
-        while (n > 1 && wOf(w.slice(0, n)) > maxW) n--;
-        out.push(w.slice(0, n));
+        while (n > 1 && wOf(w.slice(0, n).join('')) > maxW) n--;
+        out.push(w.slice(0, n).join(''));
         w = w.slice(n);
       }
-      line += w;
+      line += w.join('');
     }
     out.push(line.trimEnd());
   }

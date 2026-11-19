@@ -1,7 +1,7 @@
 // @ts-check
 // Writing the PDF that Save, Split and Merge produce. No browser APIs here, so it runs (and is tested) under Node.
 import * as annotations from './annotations.js';
-import { layout, pdfOps, cleanWith } from './textbox.js';
+import { layout, pdfOps, cleanWith, emojiPicture } from './textbox.js';
 
 // A PDF holding `list` (some or all page entries, in order) with their rotations, crops and annotations.
 // It edits the original file rather than copying pages out, so bookmarks, metadata and forms survive;
@@ -20,7 +20,7 @@ export async function buildPdf(L, { list, shapes, bytesOf, images, ocrText = new
   const doc = await PDFDocument.load(await bytesOf('main'), { updateMetadata: false });
   const ctx = doc.context, N = PDFName.of;
   const orig = doc.getPages();
-  const marks = annotations.writer(L, doc, { layout, pdfOps, images });
+  const marks = annotations.writer(L, doc, { layout, pdfOps, emojiPicture, images });
 
   const copied = new Map();   // note pages, copied in from their own small PDFs
   for (const key of new Set(list.map(e => e.doc))) {
