@@ -44,5 +44,13 @@ test('the pill, with the toolbar hidden', async () => {
   assert.deepEqual((await pill()).keys, '1 2 3 4 5', 'colours only');
   await page.click('#status .shifted button.opt:nth-of-type(3)');   // the third colour, by clicking it
   assert.equal(await page.$eval('#status .opt.on small', n => n.textContent), '3');
+  await page.keyboard.press('t');   // text: its size, with − and + to click
+  const size = () => page.$eval('#status .size .val', n => n.textContent);
+  const was = parseFloat(await size());
+  await page.click('#status .size .step:last-child');
+  assert.ok(parseFloat(await size()) > was, 'the + button makes text larger');
+  await page.click('#status .size .step:first-child');
+  assert.equal(parseFloat(await size()), was, 'and − brings it back');
+  await page.keyboard.press('Escape');
   await page.keyboard.down('Shift'); await page.keyboard.press('h'); await page.keyboard.up('Shift');
 });

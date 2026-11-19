@@ -659,8 +659,14 @@ body.barless.reveal #status { opacity: 0; }
 #status .opt .fill { width: 11px; height: 9px; border: 1.3px solid var(--ink); border-radius: 2px; }
 #status .opt .fill[data-shape="ellipse"] { border-radius: 50%; }
 #status .opt .fill.on { background: var(--ink); }
-#status .size { gap: 5px; color: var(--ink); }
-#status .size small { color: var(--dim); font-size: 10px; }
+#status .size { gap: 2px; color: var(--ink); }
+#status .size .val { min-width: 34px; text-align: center; }
+#status .step {
+  display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: 6px;
+  pointer-events: auto; color: var(--dim);
+}
+#status .step:hover { color: var(--ink); background: var(--hover); }
+#status .step svg { width: 12px; height: 12px; }
 body.barless:not(.reveal) #toast { bottom: 46px; }   /* clear of the pill in the corner */
 
 /* The button in the gap between two pages that joins them into one long page */

@@ -2796,8 +2796,8 @@ function visibleArea() {
 const TOOL_NAMES = { select: 'Pointer', highlight: 'Highlighter', cut: 'Cutter', rect: 'Rectangle', ellipse: 'Ellipse', text: 'Text box', eraser: 'Eraser' };
 // The pill, while the toolbar is hidden: the tool's icon, then what its keys pick, each marked with its key: the
 // colours (Shift+1…5: the set is marked once with a drawn shift arrow, so they aren't taken for the thickness keys), the line thickness (1, 2, 3) and
-// outline or filled (R / O again) for shapes, the size (− +) for text; then the page. The colours, thicknesses and
-// fill can be clicked too.
+// outline or filled (R / O again) for shapes, the size with − and + buttons (keys − +) for text; then the page.
+// The colours, thicknesses, fill and size buttons can be clicked too.
 function syncStatus() {
   if (!barless) return;
   const b = document.querySelector(`button[data-tool="${tool}"]`), t = $('status').querySelector('.tool');
@@ -2837,7 +2837,15 @@ function statusOptions() {
         false, type === 'rect' ? 'R' : 'O', () => setFill(!filled), el2('span', { class: filled ? 'fill on' : 'fill', 'data-shape': type }))));
     }
   } else if (k === 'text') {
-    sets.push(el2('span', { class: 'set size', title: 'Text size (− and +)' }, `${sel?.type === 'text' ? sel.size : textSize} pt`, el2('small', {}, '− +')));
+    const step = (id, by) => {   // the toolbar's own − and + buttons, again
+      const b = el2('button', { type: 'button', tabindex: '-1', class: 'step', title: $(id).title, 'aria-label': $(id).getAttribute('aria-label') });
+      b.append($(id).querySelector('svg').cloneNode(true));
+      b.addEventListener('mousedown', e => e.preventDefault());   // keeps a text box being typed in open
+      b.onclick = () => setTextSize(by);
+      return b;
+    };
+    sets.push(el2('span', { class: 'set size', title: 'Text size (− and +)' },
+      step('tsmaller', -1), el2('span', { class: 'val' }, `${sel?.type === 'text' ? sel.size : textSize} pt`), step('tbigger', 1)));
   }
   return sets;
 }
