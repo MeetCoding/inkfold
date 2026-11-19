@@ -60,10 +60,12 @@ const PALETTES = {
   cut: [['Red', CUT_RED]],
   highlight: [['Yellow', '#ffd400'], ['Green', '#9be28f'], ['Blue', '#8fc7ff'], ['Pink', '#ff9ccb'], ['Orange', '#ffb561']],
   shape: [['Red', '#e5484d'], ['White', '#ffffff'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
-  text: [['Red', '#e5484d'], ['Orange', '#e8590c'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
+  // (purple, not orange: orange beside red was hard to tell apart in text)
+  text: [['Red', '#e5484d'], ['Purple', '#ae3ec9'], ['Green', '#2f9e44'], ['Blue', '#2f6fe0'], ['Black', '#1f1f1f']],
 };
 const colors = { shape: '#e5484d', highlight: '#ffd400', text: '#1f1f1f', ...store.get('colors', {}), cut: CUT_RED };
 if (colors.shape === '#e8590c') colors.shape = '#ffffff';   // orange left the shape colours; white took its place
+if (colors.text === '#e8590c') colors.text = '#ae3ec9';   // and the text colours; purple took its place
 let textSize = store.get('textSize', 12), editing = null, lastPress = {}, pendingText = null, erasing = null, eraseHover = null;
 const imgs = new Map();         // image key -> { src: data URL, w, h (pixels), mime }
 let nextImg = 1;
